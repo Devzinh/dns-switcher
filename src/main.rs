@@ -576,6 +576,19 @@ fn save_screenshot(image: &egui::ColorImage, path: &str) {
     }
 }
 
+/// Title bar / taskbar icon, decoded from the PNG baked into the binary.
+fn window_icon() -> Option<egui::IconData> {
+    let img = image::load_from_memory(include_bytes!("../assets/icon.png"))
+        .ok()?
+        .into_rgba8();
+    let (width, height) = img.dimensions();
+    Some(egui::IconData {
+        rgba: img.into_raw(),
+        width,
+        height,
+    })
+}
+
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
     let mut shot_path = None;
@@ -589,6 +602,9 @@ fn main() -> eframe::Result<()> {
         .with_inner_size([520.0, 560.0])
         .with_min_inner_size([460.0, 480.0])
         .with_title("DNS Switcher");
+    if let Some(icon) = window_icon() {
+        viewport = viewport.with_icon(icon);
+    }
 
     if shot_path.is_some() {
         viewport = viewport.with_active(false);

@@ -10,7 +10,13 @@ keywords = ["dns", "windows", "network", "egui", "resolver"]
 [dependencies]
 eframe = { version = "0.28", default-features = true }
 egui = "0.28"
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+
+[dev-dependencies]
+resvg = "0.45"
+
+[build-dependencies]
+winresource = "0.1"
 
 [profile.release]
 opt-level = 2
