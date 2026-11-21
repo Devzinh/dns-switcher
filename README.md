@@ -5,69 +5,69 @@
 <h1 align="center">DNS Switcher</h1>
 
 <p align="center">
-  Troque o DNS do Windows em um clique e descubra qual resolvedor responde mais rápido a partir da sua rede.
+  Change your Windows DNS in one click and find out which resolver answers fastest from your network.
 </p>
 
 <p align="center">
-  <a href="https://github.com/Devzinh/dns-switcher/releases">Baixar</a> &nbsp;&nbsp; <a href="#como-funciona">Como funciona</a> &nbsp;&nbsp; <a href="#roadmap">Roadmap</a>
+  <a href="https://github.com/Devzinh/dns-switcher/releases">Download</a> &nbsp;&nbsp; <a href="#how-it-works">How it works</a> &nbsp;&nbsp; <a href="#roadmap">Roadmap</a>
 </p>
 
 <p align="center">
-  <a href="README.en.md">English</a> &nbsp;|&nbsp; <b>Português</b>
+  <b>English</b> &nbsp;|&nbsp; <a href="README.pt-BR.md">Português</a>
 </p>
 
 <br>
 
-É um executável único para Windows 10 e 11. Não tem instalador, não envia telemetria e não deixa nada rodando em segundo plano.
+A single executable for Windows 10 and 11. No installer, no telemetry, nothing left running in the background.
 
 <p align="center">
-  <img src="assets/query.svg" alt="Consulta DNS em hexadecimal e o tempo de resposta de cada resolvedor" width="100%">
+  <img src="assets/query.en.svg" alt="DNS query in hex and the reply time of each resolver" width="100%">
 </p>
 
-Acima está o pacote exato que o botão **Find fastest** envia. O mesmo pacote vai para cada resolvedor, e quem responder primeiro fica selecionado.
+Above is the exact packet the **Find fastest** button sends. The same packet goes to every resolver, and the first one to reply gets selected.
 
-## O que faz
+## What it does
 
-<img src="assets/screenshot.png" alt="Janela do DNS Switcher no modo simples" width="380" align="right">
+<img src="assets/screenshot.png" alt="DNS Switcher window in simple mode" width="380" align="right">
 
-**Modo simples.** Cinco resolvedores conhecidos, cada um com uma linha dizendo para que serve. Escolha um e clique em **Apply DNS**. O botão **Automatic** devolve o DNS do seu provedor.
+**Simple mode.** Five well-known resolvers, each with one line saying what it's for. Pick one and click **Apply DNS**. The **Automatic** button gives you back your provider's DNS.
 
-**Modo avançado.** Mais de 30 resolvedores em três grupos: uso geral, bloqueio de malware e filtro para família. Também tem IPv6, servidor personalizado, escolha do adaptador de rede e tempo de resposta de cada servidor.
+**Advanced mode.** More than 30 resolvers in three groups: general use, malware blocking and family filtering. It also has IPv6, a custom server, network adapter selection and the reply time of each server.
 
-**Find fastest** mede todos os servidores do grupo e seleciona o mais rápido. **Flush DNS** limpa o cache do Windows, então a troca vale na hora.
+**Find fastest** measures every server in the group and selects the fastest. **Flush DNS** clears the Windows cache, so the change takes effect right away.
 
 <br clear="right">
 
-## Como funciona
+## How it works
 
-O app só usa ferramentas que já vêm no Windows, mais um socket UDP.
+The app only uses tools that ship with Windows, plus a UDP socket.
 
-| Etapa | O que acontece |
+| Step | What happens |
 |---|---|
-| Listar adaptadores | Lê `netsh interface ipv4 show interfaces` pelas colunas, então funciona com o Windows em qualquer idioma. Ignora o loopback. |
-| Medir | Monta à mão uma consulta do tipo A para `www.google.com` (RFC 1035) e envia por UDP à porta 53. O tempo vai até chegar a primeira resposta válida. O limite é 500 ms. |
-| Aplicar | `netsh interface ipv4 set dnsservers … static` para o servidor primário e `add dnsservers … index=2` para o secundário. Com IPv6 é o mesmo comando, na família `ipv6`. |
-| Restaurar | Volta IPv4 e IPv6 para DHCP. |
-| Limpar cache | `ipconfig /flushdns`. |
+| List adapters | Reads `netsh interface ipv4 show interfaces` by column, so it works with Windows in any language. Skips loopback. |
+| Measure | Builds an A-type query for `www.google.com` by hand (RFC 1035) and sends it over UDP to port 53. The clock runs until the first valid reply arrives. The limit is 500 ms. |
+| Apply | `netsh interface ipv4 set dnsservers … static` for the primary server and `add dnsservers … index=2` for the secondary. For IPv6 it's the same command in the `ipv6` family. |
+| Restore | Switches IPv4 and IPv6 back to DHCP. |
+| Clear cache | `ipconfig /flushdns`. |
 
-Tudo o que toca a rede ou o sistema roda fora da thread da interface, que recebe o resultado por um canal. A janela nunca trava. O app também não grava arquivo nem chave de registro: quem guarda a configuração é o próprio Windows.
+Everything that touches the network or the system runs off the UI thread, which gets the result back through a channel. The window never freezes. The app doesn't write files or registry keys either: Windows itself keeps the configuration.
 
-A medição atual envia **uma consulta por servidor**. Ela serve para comparar resolvedores entre si, mas não mostra variação (jitter), perda de pacotes nem o pior caso. Isso está no roadmap.
+The current measurement sends **one query per server**. That's enough to compare resolvers against each other, but it doesn't show variation (jitter), packet loss or the worst case. That's on the roadmap.
 
 ```
 src/
-  main.rs       interface (egui), modos simples e avançado
-  providers.rs  lista de resolvedores IPv4 e IPv6 por grupo
-  sys.rs        netsh, ipconfig, adaptadores e a consulta UDP
+  main.rs       UI (egui), simple and advanced modes
+  providers.rs  IPv4 and IPv6 resolver list, by group
+  sys.rs        netsh, ipconfig, adapters and the UDP query
 ```
 
-## Instalação
+## Installation
 
-Baixe `dns_switcher.exe` em [Releases](https://github.com/Devzinh/dns-switcher/releases), clique com o botão direito e escolha **Executar como administrador**.
+Download `dns_switcher.exe` from [Releases](https://github.com/Devzinh/dns-switcher/releases), right-click it and choose **Run as administrator**.
 
-Trocar o DNS exige permissão de administrador. Sem ela, medir e limpar o cache continuam funcionando, mas **Apply** e **Automatic** mostram *Permission denied*.
+Changing DNS requires administrator rights. Without them, measuring and clearing the cache still work, but **Apply** and **Automatic** show *Permission denied*.
 
-O executável ainda não tem assinatura digital. Se o SmartScreen avisar, clique em **Mais informações** e depois em **Executar assim mesmo**. Outra opção é compilar você mesmo:
+The executable isn't digitally signed yet. If SmartScreen warns you, click **More info** and then **Run anyway**. You can also build it yourself:
 
 ```powershell
 git clone https://github.com/Devzinh/dns-switcher.git
@@ -76,80 +76,80 @@ cargo build --release
 .\target\release\dns_switcher.exe
 ```
 
-Para compilar é preciso ter o Rust estável ([rustup.rs](https://rustup.rs)).
+Building requires stable Rust ([rustup.rs](https://rustup.rs)).
 
-## Resolvedores incluídos
+## Included resolvers
 
-| Grupo | Para quê | Exemplos |
+| Group | Purpose | Examples |
 |---|---|---|
-| Default | Uso geral | Cloudflare, Google, Quad9, OpenDNS, AdGuard, NextDNS, DNS4EU |
-| Secure | Bloqueia malware e phishing | Cloudflare 1.1.1.2, CleanBrowsing Secure, DNS4EU Protective |
-| Family Safe | Bloqueia conteúdo adulto | Cloudflare 1.1.1.3, OpenDNS FamilyShield, AdGuard Family |
+| Default | General use | Cloudflare, Google, Quad9, OpenDNS, AdGuard, NextDNS, DNS4EU |
+| Secure | Blocks malware and phishing | Cloudflare 1.1.1.2, CleanBrowsing Secure, DNS4EU Protective |
+| Family Safe | Blocks adult content | Cloudflare 1.1.1.3, OpenDNS FamilyShield, AdGuard Family |
 
-A lista completa está em [`src/providers.rs`](src/providers.rs). Alguns serviços antigos dessa lista, como Norton ConnectSafe, Verisign e Dyn, foram encerrados por quem os mantinha e não respondem mais. O teste de velocidade simplesmente os deixa de fora.
+The full list is in [`src/providers.rs`](src/providers.rs). Some older services on that list, such as Norton ConnectSafe, Verisign and Dyn, were shut down by their operators and no longer reply. The speed test simply leaves them out.
 
 ## Roadmap
 
-### Fastest DNS com IA
+### AI-powered Fastest DNS
 
-Hoje, **Find fastest** cronometra uma lista fixa. A ideia é que ele passe a responder a pergunta que importa: *este DNS vai melhorar a minha conexão, daqui, agora?*
+Today, **Find fastest** times a fixed list. The goal is for it to answer the question that matters: *will this DNS make my connection better, from here, right now?*
 
-- [ ] Você usa a sua própria chave de API (Claude, OpenAI e outros). Ela fica guardada no Gerenciador de Credenciais do Windows e não passa por nenhum servidor do projeto.
-- [ ] Pesquisa na web os resolvedores do ano atual: serviços novos, IPs que mudaram, serviços encerrados e mudanças na política de registro de dados. A lista embutida passa a ser só um ponto de partida.
-- [ ] Localiza a sua conexão: IP público, operadora (ASN) e região.
-- [ ] Descobre qual servidor do resolvedor está respondendo de fato. O mesmo IP existe em vários países (anycast), e uma consulta `CHAOS TXT id.server` ou NSID (RFC 5001) revela qual deles atendeu.
-- [ ] Verifica se o resolvedor repassa parte do seu IP para as CDNs (EDNS Client Subnet, RFC 7871). Isso decide para qual servidor do YouTube ou da Netflix você é enviado.
-- [ ] Mede várias vezes cada servidor e calcula mediana, p95, variação e perda. Também separa resposta em cache de consulta completa, usando um domínio aleatório.
-- [ ] Gera uma nota com explicação: em linguagem simples para quem é leigo e com os números para quem quer conferir.
-- [ ] Continua funcionando como hoje para quem não informar uma chave.
+- [ ] You use your own API key (Claude, OpenAI and others). It's stored in Windows Credential Manager and never passes through any project server.
+- [ ] Searches the web for this year's resolvers: new services, changed IPs, shut-down services and changes to data-logging policies. The built-in list becomes just a starting point.
+- [ ] Locates your connection: public IP, carrier (ASN) and region.
+- [ ] Finds out which of the resolver's servers is actually answering. The same IP exists in many countries (anycast), and a `CHAOS TXT id.server` or NSID (RFC 5001) query reveals which one replied.
+- [ ] Checks whether the resolver passes part of your IP on to CDNs (EDNS Client Subnet, RFC 7871). That decides which YouTube or Netflix server you get sent to.
+- [ ] Measures each server several times and computes median, p95, variation and loss. Also separates cached replies from full lookups, using a random domain.
+- [ ] Produces a score with an explanation: plain language for beginners, and the numbers for anyone who wants to check.
+- [ ] Keeps working exactly as today for anyone who doesn't provide a key.
 
-### Rede e segurança
+### Network and security
 
-- [ ] DNS criptografado (DoH e DoT), usando o suporte nativo do Windows 11
-- [ ] Verificar se o resolvedor valida DNSSEC
-- [ ] Detectar quando o provedor intercepta consultas ou redireciona domínios inexistentes
-- [ ] Detectar vazamento de DNS com VPN ligada
+- [ ] Encrypted DNS (DoH and DoT), using Windows 11's native support
+- [ ] Check whether the resolver validates DNSSEC
+- [ ] Detect when the ISP intercepts queries or redirects nonexistent domains
+- [ ] Detect DNS leaks while a VPN is on
 
-### Uso diário
+### Everyday use
 
-- [ ] Ícone na bandeja com troca rápida
-- [ ] Perfis por rede (casa, trabalho, Wi-Fi público)
-- [ ] Pedir permissão de administrador ao abrir e assinar o executável
-- [ ] Interface em português, inglês e espanhol
-- [ ] Linha de comando para scripts: `dns_switcher --apply cloudflare --adapter "Wi-Fi"`
+- [ ] Tray icon with quick switching
+- [ ] Per-network profiles (home, work, public Wi-Fi)
+- [ ] Ask for administrator rights on launch and sign the executable
+- [ ] Interface in Portuguese, English and Spanish
+- [ ] Command line for scripts: `dns_switcher --apply cloudflare --adapter "Wi-Fi"`
 
-## Perguntas frequentes
+## FAQ
 
 <details>
-<summary>Trocar o DNS aumenta a velocidade de download?</summary>
+<summary>Does changing DNS increase download speed?</summary>
 <br>
-Não diretamente. O DNS só traduz nomes em endereços. O ganho está no tempo até a primeira conexão com cada site. Além disso, dependendo do resolvedor, a CDN pode te mandar para um servidor mais próximo, e isso afeta streaming e jogos.
+Not directly. DNS only translates names into addresses. The gain is in the time to the first connection with each site. Also, depending on the resolver, the CDN may send you to a closer server, and that affects streaming and gaming.
 </details>
 
 <details>
-<summary>Por que o mais rápido para mim não é o mais rápido para outra pessoa?</summary>
+<summary>Why isn't the fastest one for me the fastest for someone else?</summary>
 <br>
-Resolvedores públicos usam anycast: o mesmo IP existe em vários lugares do mundo. Qual deles te atende depende do caminho que a sua operadora escolhe, não da distância no mapa. Por isso a medição precisa ser feita na sua conexão.
+Public resolvers use anycast: the same IP exists in many places around the world. Which one serves you depends on the route your carrier picks, not on distance on a map. That's why the measurement has to run on your connection.
 </details>
 
 <details>
-<summary>O app coleta algum dado?</summary>
+<summary>Does the app collect any data?</summary>
 <br>
-Não. A única coisa que ele envia pela rede são as consultas de teste aos resolvedores que você está medindo.
+No. The only thing it sends over the network is the test queries to the resolvers you're measuring.
 </details>
 
 <details>
-<summary>Como desfazer?</summary>
+<summary>How do I undo it?</summary>
 <br>
-Clique em <b>Automatic</b> no modo simples ou em <b>Default</b> no avançado. Isso equivale a <code>netsh interface ipv4 set dnsservers name="Wi-Fi" dhcp</code>, mais o mesmo comando para IPv6.
+Click <b>Automatic</b> in simple mode or <b>Default</b> in advanced mode. That's equivalent to <code>netsh interface ipv4 set dnsservers name="Wi-Fi" dhcp</code>, plus the same command for IPv6.
 </details>
 
-## Contribuir
+## Contributing
 
-Para adicionar ou corrigir um resolvedor, edite `src/providers.rs` e coloque no pull request o link para a página oficial do serviço. Antes de abrir o PR, rode `cargo fmt` e `cargo clippy`.
+To add or fix a resolver, edit `src/providers.rs` and include a link to the service's official page in the pull request. Run `cargo fmt` and `cargo clippy` before opening the PR.
 
-Ao relatar um bug, informe a versão e o idioma do Windows e cole a saída de `netsh interface ipv4 show interfaces`.
+When reporting a bug, include your Windows version and language, and paste the output of `netsh interface ipv4 show interfaces`.
 
-## Licença
+## License
 
 [MIT](LICENSE)
