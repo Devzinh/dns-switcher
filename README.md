@@ -110,7 +110,7 @@ src/
 Requer **Rust estável** ([rustup.rs](https://rustup.rs)) e Windows 10/11.
 
 ```powershell
-git clone https://github.com/<seu-usuario>/dns-switcher.git
+git clone https://github.com/Devzinh/dns-switcher.git
 cd dns-switcher
 cargo build --release
 .\target\release\dns_switcher.exe
