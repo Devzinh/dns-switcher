@@ -1,6 +1,18 @@
-# DNS Switcher
+<p align="center">
+  <img src="assets/logo.svg" alt="" width="180">
+</p>
 
-Troque o DNS do Windows em um clique e descubra qual resolvedor responde mais rápido a partir da sua rede.
+<h1 align="center">DNS Switcher</h1>
+
+<p align="center">
+  Troque o DNS do Windows em um clique e descubra qual resolvedor responde mais rápido a partir da sua rede.
+</p>
+
+<p align="center">
+  <a href="https://github.com/Devzinh/dns-switcher/releases">Baixar</a> &nbsp;&nbsp; <a href="#como-funciona">Como funciona</a> &nbsp;&nbsp; <a href="#roadmap">Roadmap</a>
+</p>
+
+<br>
 
 É um executável único para Windows 10 e 11. Não tem instalador, não envia telemetria e não deixa nada rodando em segundo plano.
 
