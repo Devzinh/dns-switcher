@@ -12,6 +12,10 @@
   <a href="https://github.com/Devzinh/dns-switcher/releases">Baixar</a> &nbsp;&nbsp; <a href="#como-funciona">Como funciona</a> &nbsp;&nbsp; <a href="#roadmap">Roadmap</a>
 </p>
 
+<p align="center">
+  <a href="README.en.md">English</a> &nbsp;|&nbsp; <b>Português</b>
+</p>
+
 <br>
 
 É um executável único para Windows 10 e 11. Não tem instalador, não envia telemetria e não deixa nada rodando em segundo plano.
