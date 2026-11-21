@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 330" width="1200" height="330" role="img" aria-label="Exemplo ilustrativo de corrida de latência entre resolvedores DNS">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#070b14"/><stop offset="1" stop-color="#0d1526"/>
+    </linearGradient>
+    <linearGradient id="win" x1="0" x2="1"><stop offset="0" stop-color="#14b8a6"/><stop offset="1" stop-color="#5eead4"/></linearGradient>
+    <linearGradient id="bar" x1="0" x2="1"><stop offset="0" stop-color="#1e3a8a"/><stop offset="1" stop-color="#3b82f6"/></linearGradient>
+    <style>
+      .t { font-family: 'Segoe UI', Inter, system-ui, sans-serif; }
+      .m { font-family: 'Cascadia Code', Consolas, monospace; }
+      .b { transform-box: fill-box; transform-origin: left center; transform: scaleX(0); animation: grow 6s cubic-bezier(.2,.8,.2,1) infinite; }
+      .b1 { animation-duration: 6s }
+      @keyframes grow { 0% { transform: scaleX(0) } 30% { transform: scaleX(1) } 85% { transform: scaleX(1); opacity: 1 } 100% { transform: scaleX(1); opacity: 0 } }
+      .v { opacity: 0; animation: show 6s ease infinite; }
+      @keyframes show { 0%,28% { opacity: 0 } 33%,85% { opacity: 1 } 100% { opacity: 0 } }
+      .crown { opacity: 0; animation: crown 6s ease infinite; transform-box: fill-box; transform-origin: center; }
+      @keyframes crown { 0%,35% { opacity: 0; transform: scale(.4) } 42% { opacity: 1; transform: scale(1.2) } 48%,85% { opacity: 1; transform: none } 100% { opacity: 0 } }
+    </style>
+  </defs>
+  <rect width="1200" height="330" rx="18" fill="url(#bg)"/>
+  <text class="t" x="40" y="48" font-size="22" font-weight="700" fill="#e2e8f0">Encontre o mais rápido</text>
+  <text class="t" x="40" y="74" font-size="14" fill="#64748b">Um query A por resolvedor, cronometrado no socket. Valores ilustrativos — o resultado real depende da sua rede, ISP e região.</text>
+
+  <g class="t" font-size="15" fill="#cbd5e1">
+    <text x="40" y="123">Cloudflare</text>
+    <text x="40" y="163">Google</text>
+    <text x="40" y="203">Quad9</text>
+    <text x="40" y="243">AdGuard</text>
+    <text x="40" y="283">OpenDNS</text>
+  </g>
+  <g class="m" font-size="12" fill="#475569">
+    <text x="150" y="123">1.1.1.1</text>
+    <text x="150" y="163">8.8.8.8</text>
+    <text x="150" y="203">9.9.9.9</text>
+    <text x="150" y="243">94.140.14.14</text>
+    <text x="150" y="283">208.67.222.222</text>
+  </g>
+
+  <g>
+    <rect x="290" y="108" width="700" height="20" rx="10" fill="#111a2e"/>
+    <rect x="290" y="148" width="700" height="20" rx="10" fill="#111a2e"/>
+    <rect x="290" y="188" width="700" height="20" rx="10" fill="#111a2e"/>
+    <rect x="290" y="228" width="700" height="20" rx="10" fill="#111a2e"/>
+    <rect x="290" y="268" width="700" height="20" rx="10" fill="#111a2e"/>
+
+    <rect class="b" x="290" y="108" width="190" height="20" rx="10" fill="url(#win)"/>
+    <rect class="b" x="290" y="148" width="300" height="20" rx="10" fill="url(#bar)" style="animation-timing-function: cubic-bezier(.3,.6,.3,1)"/>
+    <rect class="b" x="290" y="188" width="380" height="20" rx="10" fill="url(#bar)" style="animation-timing-function: cubic-bezier(.4,.5,.3,1)"/>
+    <rect class="b" x="290" y="228" width="570" height="20" rx="10" fill="url(#bar)" style="animation-timing-function: cubic-bezier(.5,.4,.3,1)"/>
+    <rect class="b" x="290" y="268" width="660" height="20" rx="10" fill="url(#bar)" style="animation-timing-function: cubic-bezier(.6,.3,.3,1)"/>
+  </g>
+  <g class="m v" font-size="14">
+    <text x="492" y="123" fill="#5eead4" font-weight="700">9 ms</text>
+    <text x="602" y="163" fill="#93c5fd">14 ms</text>
+    <text x="682" y="203" fill="#93c5fd">18 ms</text>
+    <text x="872" y="243" fill="#93c5fd">27 ms</text>
+    <text x="962" y="283" fill="#93c5fd">31 ms</text>
+  </g>
+  <g class="crown">
+    <rect x="1022" y="104" width="148" height="28" rx="14" fill="#0f2a2e" stroke="#14b8a6"/>
+    <text class="t" x="1096" y="123" text-anchor="middle" font-size="13" font-weight="700" fill="#5eead4">⚡ selecionado</text>
+  </g>
+</svg>

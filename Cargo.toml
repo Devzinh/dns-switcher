@@ -1,0 +1,16 @@
+[package]
+name = "dns_switcher"
+version = "0.1.0"
+edition = "2021"
+description = "Switch Windows DNS in one click, with a built-in fastest-resolver test."
+license = "MIT"
+readme = "README.md"
+keywords = ["dns", "windows", "network", "egui", "resolver"]
+
+[dependencies]
+eframe = { version = "0.28", default-features = true }
+egui = "0.28"
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[profile.release]
+opt-level = 2
