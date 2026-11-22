@@ -1,11 +1,20 @@
 [package]
 name = "dns_switcher"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Switch Windows DNS in one click, with a built-in fastest-resolver test."
 license = "MIT"
 readme = "README.md"
 keywords = ["dns", "windows", "network", "egui", "resolver"]
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "dns_switcher"
+path = "src/main.rs"
+# Release builds require elevation (see build.rs), so the binary has no tests.
+test = false
 
 [dependencies]
 eframe = { version = "0.28", default-features = true }

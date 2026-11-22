@@ -34,7 +34,6 @@ pub const DEFAULT_V4: &[Provider] = &[
     p!("Level 3 - A", "209.244.0.3", "209.244.0.4"),
     p!("Level 3 - B", "4.2.2.1", "4.2.2.2"),
     p!("Verisign Public DNS", "64.6.64.6", "64.6.65.6"),
-    p!("Norton ConnectSafe Basic", "199.85.126.10", "199.85.127.10"),
     p!("Neustar 1", "156.154.70.1", "156.154.71.1"),
     p!("Neustar 2", "156.154.70.5", "156.154.71.5"),
     p!("Hurricane Electric", "74.82.42.42", ""),
@@ -45,7 +44,6 @@ pub const DEFAULT_V4: &[Provider] = &[
 
 pub const SECURE_V4: &[Provider] = &[
     p!("Cloudflare Malware Blocking", "1.1.1.2", "1.0.0.2"),
-    p!("Norton ConnectSafe Secure", "199.85.126.20", "199.85.127.20"),
     p!("Yandex Safe", "77.88.8.88", "77.88.8.2"),
     p!("Comodo Secure", "8.26.56.26", "8.20.247.20"),
     p!("CleanBrowsing Secure", "185.228.168.9", "185.228.169.9"),
@@ -58,7 +56,6 @@ pub const FAMILY_V4: &[Provider] = &[
     p!("OpenDNS Family", "208.67.222.123", "208.67.220.123"),
     p!("CleanBrowsing Family", "185.228.168.168", "185.228.169.168"),
     p!("CleanBrowsing Adult Filter", "185.228.168.10", "185.228.169.11"),
-    p!("Norton ConnectSafe Family", "199.85.126.30", "199.85.127.30"),
     p!("Yandex Family", "77.88.8.7", "77.88.8.3"),
     p!("AdGuard Family", "94.140.14.15", "94.140.15.16"),
     p!("Neustar Family Secure", "156.154.70.3", "156.154.71.3"),

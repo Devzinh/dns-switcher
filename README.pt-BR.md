@@ -32,11 +32,24 @@ Acima está o pacote exato que o botão **Find fastest** envia. O mesmo pacote v
 
 **Modo simples.** Cinco resolvedores conhecidos, cada um com uma linha dizendo para que serve. Escolha um e clique em **Apply DNS**. O botão **Automatic** devolve o DNS do seu provedor.
 
-**Modo avançado.** Mais de 30 resolvedores em três grupos: uso geral, bloqueio de malware e filtro para família. Também tem IPv6, servidor personalizado, escolha do adaptador de rede e tempo de resposta de cada servidor.
+**Modo avançado.** Mais de 30 resolvedores em três grupos: uso geral, bloqueio de malware e filtro para família. Também tem IPv6, servidor personalizado e escolha do adaptador de rede.
 
-**Find fastest** mede todos os servidores do grupo e seleciona o mais rápido. **Flush DNS** limpa o cache do Windows, então a troca vale na hora.
+**Find fastest** mede todos os servidores da tela e seleciona o mais rápido. **Flush DNS** limpa o cache do Windows, então a troca vale na hora. A janela também mostra qual DNS o adaptador está usando agora.
 
 <br clear="right">
+
+<img src="assets/screenshot-advanced.png" alt="Modo avançado com mediana, p95, jitter, perda, consulta fria e site anycast de cada resolvedor" width="100%">
+
+No modo avançado cada servidor ganha uma linha de medições:
+
+| Coluna | Significado |
+|---|---|
+| Median | Valor do meio de 5 consultas a um nome popular, que já está no cache do resolvedor |
+| p95 | A mais lenta dessas consultas. Se ficar muito acima da mediana, o servidor é instável |
+| Jitter | Quanto o tempo varia, em média, de uma consulta para a seguinte |
+| Loss | Consultas sem resposta em até 500 ms |
+| Cold | Uma consulta a um nome aleatório que o resolvedor nunca viu, então ele precisa perguntar aos servidores autoritativos. É o que você sente ao abrir um site pela primeira vez |
+| Site | Qual unidade anycast respondeu, quando o resolvedor informa (por exemplo, `gru14` é a Cloudflare em São Paulo) |
 
 ## Como funciona
 
@@ -45,27 +58,25 @@ O app só usa ferramentas que já vêm no Windows, mais um socket UDP.
 | Etapa | O que acontece |
 |---|---|
 | Listar adaptadores | Lê `netsh interface ipv4 show interfaces` pelas colunas, então funciona com o Windows em qualquer idioma. Ignora o loopback. |
-| Medir | Monta à mão uma consulta do tipo A para `www.google.com` (RFC 1035) e envia por UDP à porta 53. O tempo vai até chegar a primeira resposta válida. O limite é 500 ms. |
+| Medir | Monta consultas DNS à mão (RFC 1035) e envia por UDP à porta 53: 5 consultas a `www.google.com` com 80 ms de intervalo, uma consulta a um nome aleatório dentro de `google.com` e uma consulta CHAOS TXT `id.server`. Uma resposta só vale se trouxer o mesmo id de transação e a marca de resposta. Cada consulta tem limite de 500 ms, e 6 servidores são medidos ao mesmo tempo. |
+| Classificar | Servidores com até 20% de perda vêm primeiro, ordenados pela mediana e depois pelo p95. |
 | Aplicar | `netsh interface ipv4 set dnsservers … static` para o servidor primário e `add dnsservers … index=2` para o secundário. Com IPv6 é o mesmo comando, na família `ipv6`. |
 | Restaurar | Volta IPv4 e IPv6 para DHCP. |
 | Limpar cache | `ipconfig /flushdns`. |
 
 Tudo o que toca a rede ou o sistema roda fora da thread da interface, que recebe o resultado por um canal. A janela nunca trava. O app também não grava arquivo nem chave de registro: quem guarda a configuração é o próprio Windows.
 
-A medição atual envia **uma consulta por servidor**. Ela serve para comparar resolvedores entre si, mas não mostra variação (jitter), perda de pacotes nem o pior caso. Isso está no roadmap.
-
 ```
 src/
   main.rs       interface (egui), modos simples e avançado
   providers.rs  lista de resolvedores IPv4 e IPv6 por grupo
-  sys.rs        netsh, ipconfig, adaptadores e a consulta UDP
+  probe.rs      consultas DNS por UDP, leitura das respostas e estatísticas
+  sys.rs        netsh, ipconfig e adaptadores
 ```
 
 ## Instalação
 
-Baixe `dns_switcher.exe` em [Releases](https://github.com/Devzinh/dns-switcher/releases), clique com o botão direito e escolha **Executar como administrador**.
-
-Trocar o DNS exige permissão de administrador. Sem ela, medir e limpar o cache continuam funcionando, mas **Apply** e **Automatic** mostram *Permission denied*.
+Baixe `dns_switcher.exe` em [Releases](https://github.com/Devzinh/dns-switcher/releases) e abra. O Windows pede permissão de administrador, porque trocar o DNS exige isso.
 
 O executável ainda não tem assinatura digital. Se o SmartScreen avisar, clique em **Mais informações** e depois em **Executar assim mesmo**. Outra opção é compilar você mesmo:
 
@@ -76,7 +87,11 @@ cargo build --release
 .\target\release\dns_switcher.exe
 ```
 
-Para compilar é preciso ter o Rust estável ([rustup.rs](https://rustup.rs)).
+Para compilar é preciso ter o Rust estável ([rustup.rs](https://rustup.rs)). O build de debug (`cargo run`) não pede administrador: dá para medir, mas para aplicar o DNS o terminal precisa estar elevado.
+
+Os testes rodam com `cargo test`. `cargo test -- --ignored --nocapture` também mede o 1.1.1.1 pela rede.
+
+O que mudou em cada versão está no [changelog](CHANGELOG.md).
 
 ## Resolvedores incluídos
 
@@ -86,7 +101,7 @@ Para compilar é preciso ter o Rust estável ([rustup.rs](https://rustup.rs)).
 | Secure | Bloqueia malware e phishing | Cloudflare 1.1.1.2, CleanBrowsing Secure, DNS4EU Protective |
 | Family Safe | Bloqueia conteúdo adulto | Cloudflare 1.1.1.3, OpenDNS FamilyShield, AdGuard Family |
 
-A lista completa está em [`src/providers.rs`](src/providers.rs). Alguns serviços antigos dessa lista, como Norton ConnectSafe, Verisign e Dyn, foram encerrados por quem os mantinha e não respondem mais. O teste de velocidade simplesmente os deixa de fora.
+A lista completa está em [`src/providers.rs`](src/providers.rs). Alguns serviços mudam de dono com o tempo (os DNS públicos da Verisign e da Neustar hoje são operados pela UltraDNS), e servidores que param de responder aparecem com 100% de perda e nunca são escolhidos.
 
 ## Roadmap
 
@@ -97,9 +112,9 @@ Hoje, **Find fastest** cronometra uma lista fixa. A ideia é que ele passe a res
 - [ ] Você usa a sua própria chave de API (Claude, OpenAI e outros). Ela fica guardada no Gerenciador de Credenciais do Windows e não passa por nenhum servidor do projeto.
 - [ ] Pesquisa na web os resolvedores do ano atual: serviços novos, IPs que mudaram, serviços encerrados e mudanças na política de registro de dados. A lista embutida passa a ser só um ponto de partida.
 - [ ] Localiza a sua conexão: IP público, operadora (ASN) e região.
-- [ ] Descobre qual servidor do resolvedor está respondendo de fato. O mesmo IP existe em vários países (anycast), e uma consulta `CHAOS TXT id.server` ou NSID (RFC 5001) revela qual deles atendeu.
+- [x] Descobre qual servidor do resolvedor está respondendo de fato. O mesmo IP existe em vários países (anycast), e uma consulta `CHAOS TXT id.server` revela qual deles atendeu. *(0.1.1; falta o NSID, RFC 5001)*
 - [ ] Verifica se o resolvedor repassa parte do seu IP para as CDNs (EDNS Client Subnet, RFC 7871). Isso decide para qual servidor do YouTube ou da Netflix você é enviado.
-- [ ] Mede várias vezes cada servidor e calcula mediana, p95, variação e perda. Também separa resposta em cache de consulta completa, usando um domínio aleatório.
+- [x] Mede várias vezes cada servidor e calcula mediana, p95, variação e perda. Também separa resposta em cache de consulta completa, usando um domínio aleatório. *(0.1.1)*
 - [ ] Gera uma nota com explicação: em linguagem simples para quem é leigo e com os números para quem quer conferir.
 - [ ] Continua funcionando como hoje para quem não informar uma chave.
 
@@ -114,7 +129,8 @@ Hoje, **Find fastest** cronometra uma lista fixa. A ideia é que ele passe a res
 
 - [ ] Ícone na bandeja com troca rápida
 - [ ] Perfis por rede (casa, trabalho, Wi-Fi público)
-- [ ] Pedir permissão de administrador ao abrir e assinar o executável
+- [x] Pedir permissão de administrador ao abrir *(0.1.1)*
+- [ ] Assinar o executável
 - [ ] Interface em português, inglês e espanhol
 - [ ] Linha de comando para scripts: `dns_switcher --apply cloudflare --adapter "Wi-Fi"`
 

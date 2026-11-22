@@ -98,10 +98,10 @@
   <rect class="bar g g4" x="400" y="266" width="270" height="12"/>
 
   <g class="r5">
-    <text class="muted" x="24" y="306">64.6.64.6</text>
-    <text class="muted" x="184" y="306">Verisign</text>
-    <text class="muted" x="380" y="306" text-anchor="end">–</text>
-    <text class="muted" x="400" y="306">no reply within 500 ms</text>
+    <text class="muted" x="24" y="306">77.88.8.1</text>
+    <text class="muted" x="184" y="306">Yandex</text>
+    <text class="muted" x="380" y="306" text-anchor="end">263 ms</text>
+    <text class="muted" x="400" y="306">nearest server is in Europe</text>
   </g>
 
   <text class="muted small" x="24" y="344">Sample run. Real times depend on your ISP and region.</text>

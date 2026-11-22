@@ -1,6 +1,6 @@
-// System glue: adapters, applying DNS, flush, and a UDP DNS resolve-time probe.
-use std::net::{IpAddr, SocketAddr, UdpSocket};
-use std::time::{Duration, Instant};
+// System glue: adapters, applying DNS, restoring DHCP and flushing the cache.
+
+
 
 #[cfg(windows)]
 const NO_WINDOW: u32 = 0x0800_0000; // CREATE_NO_WINDOW
@@ -126,35 +126,3 @@ fn is_ipv4(s: &str) -> bool {
     parts.len() == 4 && parts.iter().all(|p| !p.is_empty() && p.parse::<u8>().is_ok())
 }
 
-/// One UDP DNS A-query to `server`, measure round-trip ms. None on timeout/error.
-pub fn resolve_ms(server: &str, domain: &str, timeout_ms: u64) -> Option<u32> {
-    let ip: IpAddr = server.trim().parse().ok()?;
-    let bind = if ip.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
-    let sock = UdpSocket::bind(bind).ok()?;
-    sock.set_read_timeout(Some(Duration::from_millis(timeout_ms))).ok()?;
-    let target = SocketAddr::new(ip, 53);
-    let query = build_query(domain);
-    let start = Instant::now();
-    sock.send_to(&query, target).ok()?;
-    let mut buf = [0u8; 512];
-    match sock.recv_from(&mut buf) {
-        Ok((n, _)) if n >= 12 => Some(start.elapsed().as_millis() as u32),
-        _ => None,
-    }
-}
-
-fn build_query(domain: &str) -> Vec<u8> {
-    let mut q = Vec::with_capacity(32);
-    q.extend_from_slice(&[0x12, 0x34]); // id
-    q.extend_from_slice(&[0x01, 0x00]); // RD
-    q.extend_from_slice(&[0x00, 0x01]); // qdcount
-    q.extend_from_slice(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
-    for label in domain.split('.') {
-        q.push(label.len() as u8);
-        q.extend_from_slice(label.as_bytes());
-    }
-    q.push(0);
-    q.extend_from_slice(&[0x00, 0x01]); // A
-    q.extend_from_slice(&[0x00, 0x01]); // IN
-    q
-}
