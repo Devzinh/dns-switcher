@@ -1,37 +1,39 @@
-// Windows resources: the executable icon, and on release builds a manifest
-// that asks for administrator rights at launch (changing DNS needs them).
-// Debug builds skip the manifest so `cargo run` works from a normal shell.
-// The manifest is the only source of the UAC level (/MANIFESTUAC:NO stops the
-// linker from adding its own asInvoker entry).
+// Windows resources for the executable: icon, version information (shown in
+// Properties > Details and used by antivirus reputation), and a manifest.
+//
+// The manifest runs the app with the user's normal rights (asInvoker). Changing
+// DNS is done by the DNS Switcher service that the setup program installs, so
+// opening the app never needs a UAC prompt.
 fn main() {
     println!("cargo:rerun-if-changed=assets/icon.ico");
     println!("cargo:rerun-if-changed=build.rs");
     if std::env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("windows") {
         return;
     }
+    let version = std::env::var("CARGO_PKG_VERSION").unwrap();
     let mut res = winresource::WindowsResource::new();
-    res.set_icon("assets/icon.ico");
+    res.set_icon("assets/icon.ico")
+        .set("ProductName", "DNS Switcher")
+        .set("FileDescription", "DNS Switcher")
+        .set("CompanyName", "DNS Switcher contributors")
+        .set("LegalCopyright", "Copyright (c) 2026 DNS Switcher contributors. MIT License.")
+        .set("OriginalFilename", "dns_switcher.exe")
+        .set("InternalName", "dns_switcher")
+        .set("Comments", "Open source: https://github.com/Devzinh/dns-switcher")
+        .set("ProductVersion", &version)
+        .set("FileVersion", &version)
+        .set_manifest(MANIFEST);
     res.compile().expect("embed Windows resources");
-
-    // The manifest goes through the linker with -bins so it only reaches the
-    // app executable, never the test harness (which would then need elevation).
-    if std::env::var("PROFILE").as_deref() == Ok("release")
-        && std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
-    {
-        let path = std::path::Path::new(&std::env::var("OUT_DIR").unwrap()).join("app.manifest");
-        std::fs::write(&path, MANIFEST).expect("write manifest");
-        println!("cargo:rustc-link-arg-bins=/MANIFEST:EMBED");
-        println!("cargo:rustc-link-arg-bins=/MANIFESTINPUT:{}", path.display());
-        println!("cargo:rustc-link-arg-bins=/MANIFESTUAC:NO");
-    }
 }
 
 const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <assemblyIdentity type="win32" name="DnsSwitcher.App" version="0.1.1.0" processorArchitecture="*"/>
+  <description>DNS Switcher</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
       <requestedPrivileges>
-        <requestedExecutionLevel level="requireAdministrator" uiAccess="false"/>
+        <requestedExecutionLevel level="asInvoker" uiAccess="false"/>
       </requestedPrivileges>
     </security>
   </trustInfo>
@@ -40,5 +42,11 @@ const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?
       <supportedOS Id="{8e0f7a12-bfb3-4fe8-b9a5-48fd50a15a9a}"/>
     </application>
   </compatibility>
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0"
+        processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*"/>
+    </dependentAssembly>
+  </dependency>
 </assembly>
 "#;

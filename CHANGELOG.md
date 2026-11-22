@@ -11,10 +11,18 @@
 - Servers are measured 6 at a time instead of one after another. Probing every server at once caused false packet loss on home routers.
 - In simple mode, **Find fastest** now tests the five servers on screen and shows each one's time next to it.
 
+### Installer, service and tray
+
+- New setup program (`DNS-Switcher-Setup-0.1.1.exe`): installs to Program Files with a Start menu entry and an uninstaller, in English or Portuguese.
+- New **DNS Switcher Service** (`services.msc`) does the privileged work. The app now runs with normal user rights and never shows a UAC prompt.
+- The service only accepts requests from this computer, re-validates every address and adapter, and runs `netsh`/`ipconfig` from System32 directly, never through a shell. Adapters are addressed by interface index.
+- New notification-area icon: closing the window keeps the app there, with quick switching, Automatic, Find fastest, Flush DNS and **Start with Windows**.
+- `dns_switcher.exe` now carries version information (product, publisher, version, copyright).
+
 ### App
 
 - The window shows which DNS the selected adapter is using right now.
-- Release builds ask for administrator rights at launch, so **Apply** no longer fails with *Permission denied*.
+- Without the service, `dns_switcher.exe` still works as a portable app when started as administrator.
 - Larger window so the new columns fit.
 - Removed Norton ConnectSafe (all three addresses no longer reply).
 

@@ -5,5 +5,6 @@
 //! binary embed a manifest that requires administrator rights, which would
 //! stop an unelevated `cargo test --release` from launching it.
 
+pub mod ipc;
 pub mod probe;
 pub mod providers;

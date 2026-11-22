@@ -1,8 +1,11 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
+mod service;
 mod sys;
+mod tray;
 
 use eframe::egui;
+use dns_switcher::ipc::Request;
 use dns_switcher::probe;
 use dns_switcher::providers::{Provider, GROUPS, QUICK};
 use std::sync::mpsc::{Receiver, Sender};
@@ -49,6 +52,10 @@ struct App {
     testing: bool,
     /// DNS servers in use on the selected adapter, as reported by Windows.
     current: String,
+    /// Adapter the tray menu acts on.
+    tray_adapter: std::sync::Arc<std::sync::Mutex<String>>,
+    /// Set when the window should hide to the tray instead of closing.
+    tray_ready: bool,
     best: Option<usize>,
     tx: Sender<Msg>,
     rx: Receiver<Msg>,
@@ -88,6 +95,8 @@ impl App {
             test_gen: 0,
             testing: false,
             current: String::new(),
+            tray_adapter: Default::default(),
+            tray_ready: false,
             best: None,
             tx,
             rx,
@@ -120,6 +129,12 @@ impl App {
         });
     }
 
+    fn sync_tray_adapter(&self) {
+        if let Ok(mut a) = self.tray_adapter.lock() {
+            *a = self.adapter_name();
+        }
+    }
+
     fn adapter_name(&self) -> String {
         self.adapters
             .get(self.adapter_idx)
@@ -150,26 +165,19 @@ impl App {
             self.set_status("No network adapter found.", false);
             return;
         }
-        let ipv6 = self.ipv6;
+        let req = match Request::apply(&adapter, self.ipv6, &d1, &d2) {
+            Ok(r) => r,
+            Err(e) => return self.set_status(&e, false),
+        };
         let tx = self.tx.clone();
         self.busy = true;
         self.set_status("Applying DNS…", true);
         thread::spawn(move || {
-            let r = sys::apply_dns(&adapter, ipv6, &d1, &d2);
-            match r {
-                Ok(()) => {
-                    if auto_flush {
-                        let _ = sys::flush_dns();
-                    }
-                    let _ = tx.send(Msg::Status(
-                        format!("DNS successfully changed to {} on \"{}\".", d1, adapter),
-                        true,
-                    ));
-                }
-                Err(e) => {
-                    let _ = tx.send(Msg::Status(short_err(&e), false));
-                }
+            let r = service::perform(&req);
+            if r.is_ok() && auto_flush {
+                let _ = service::perform(&Request::Flush);
             }
+            let _ = tx.send(status_msg(r));
         });
     }
 
@@ -183,11 +191,7 @@ impl App {
         self.busy = true;
         self.set_status("Restoring automatic DNS…", true);
         thread::spawn(move || {
-            let r = sys::restore_dhcp(&adapter);
-            let _ = tx.send(match r {
-                Ok(()) => Msg::Status(format!("Automatic (DHCP) DNS restored on \"{}\".", adapter), true),
-                Err(e) => Msg::Status(short_err(&e), false),
-            });
+            let _ = tx.send(status_msg(service::perform(&Request::Restore { adapter })));
         });
     }
 
@@ -196,11 +200,7 @@ impl App {
         self.busy = true;
         self.set_status("Flushing DNS cache…", true);
         thread::spawn(move || {
-            let r = sys::flush_dns();
-            let _ = tx.send(match r {
-                Ok(()) => Msg::Status("Successfully flushed the DNS resolver cache.".into(), true),
-                Err(e) => Msg::Status(short_err(&e), false),
-            });
+            let _ = tx.send(status_msg(service::perform(&Request::Flush)));
         });
     }
 
@@ -314,19 +314,24 @@ impl App {
     }
 }
 
-fn short_err(e: &str) -> String {
-    let low = e.to_lowercase();
-    if low.contains("elev") || low.contains("requer") || low.contains("740") || low.contains("denied") || low.contains("acesso") {
-        "Permission denied. Run this app as Administrator to change DNS.".into()
-    } else {
-        let first = e.lines().find(|l| !l.trim().is_empty()).unwrap_or(e);
-        format!("Could not change DNS: {}", first.trim())
+fn status_msg(r: Result<String, String>) -> Msg {
+    match r {
+        Ok(m) => Msg::Status(m, true),
+        Err(e) => {
+            let first = e.lines().find(|l| !l.trim().is_empty()).unwrap_or(&e).trim().to_string();
+            Msg::Status(first, false)
+        }
     }
 }
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         self.pump();
+        if self.tray_ready && ctx.input(|i| i.viewport().close_requested()) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::CancelClose);
+            tray::hide_window();
+            tray::set_pending("Still running here. Right-click for quick switching.".into());
+        }
 
         // Detect a Simple/Advanced switch to drive a fade + slide transition.
         if self.mode != self.prev_mode {
@@ -382,6 +387,7 @@ impl eframe::App for App {
                         }
                     });
                 if self.adapter_idx != before {
+                    self.sync_tray_adapter();
                     self.current.clear();
                     self.refresh_current();
                 }
@@ -711,6 +717,23 @@ fn save_screenshot(image: &egui::ColorImage, path: &str) {
     }
 }
 
+impl App {
+    /// Notification-area icon. Failure only disables hide-to-tray.
+    fn start_tray(&mut self, cc: &eframe::CreationContext<'_>) {
+        use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+        if let Ok(h) = cc.window_handle() {
+            if let RawWindowHandle::Win32(w) = h.as_raw() {
+                tray::WINDOW.store(w.hwnd.get(), std::sync::atomic::Ordering::Relaxed);
+            }
+        }
+        let ctx = cc.egui_ctx.clone();
+        match tray::install(self.tray_adapter.clone(), move || ctx.request_repaint()) {
+            Ok(()) => self.tray_ready = true,
+            Err(e) => self.set_status(&format!("Tray icon unavailable: {e}"), false),
+        }
+    }
+}
+
 /// Title bar / taskbar icon, decoded from the PNG baked into the binary.
 fn window_icon() -> Option<egui::IconData> {
     let img = image::load_from_memory(include_bytes!("../assets/icon.png"))
@@ -726,6 +749,20 @@ fn window_icon() -> Option<egui::IconData> {
 
 fn main() -> eframe::Result<()> {
     let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|a| a == "--service") {
+        if let Err(e) = service::run() {
+            eprintln!("{e}");
+            std::process::exit(1);
+        }
+        return Ok(());
+    }
+    // Used by the installer and uninstaller, running as the signed-in user.
+    for (flag, on) in [("--set-autostart", true), ("--clear-autostart", false)] {
+        if args.iter().any(|a| a == flag) {
+            std::process::exit(if tray::set_autostart(on).is_ok() { 0 } else { 1 });
+        }
+    }
+    let start_hidden = args.iter().any(|a| a == "--tray");
     let mut shot_path = None;
     for i in 0..args.len() {
         if args[i] == "--screenshot" {
@@ -741,6 +778,9 @@ fn main() -> eframe::Result<()> {
         viewport = viewport.with_icon(icon);
     }
 
+    if start_hidden {
+        viewport = viewport.with_visible(false);
+    }
     if shot_path.is_some() {
         viewport = viewport.with_active(false);
         #[cfg(windows)]
@@ -761,6 +801,10 @@ fn main() -> eframe::Result<()> {
         Box::new(move |cc| {
             let mut app = App::new(cc, shot.clone());
             app.refresh_current();
+            app.sync_tray_adapter();
+            if shot.is_none() {
+                app.start_tray(cc);
+            }
             Ok(Box::new(app))
         }),
     )

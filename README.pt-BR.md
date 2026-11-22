@@ -64,30 +64,66 @@ O app só usa ferramentas que já vêm no Windows, mais um socket UDP.
 | Restaurar | Volta IPv4 e IPv6 para DHCP. |
 | Limpar cache | `ipconfig /flushdns`. |
 
-Tudo o que toca a rede ou o sistema roda fora da thread da interface, que recebe o resultado por um canal. A janela nunca trava. O app também não grava arquivo nem chave de registro: quem guarda a configuração é o próprio Windows.
+Tudo o que toca a rede ou o sistema roda fora da thread da interface, que recebe o resultado por um canal. A janela nunca trava.
+
+### App e serviço
+
+```
+ App DNS Switcher (seu usuário, sem admin)        DNS Switcher Service (LocalSystem)
+ janela, ícone na bandeja, medições     ──────►  valida o pedido e executa
+                                     pipe local   netsh / ipconfig do System32
+```
+
+Medir não exige permissão especial, então o próprio app faz isso. Aplicar o DNS, voltar ao DHCP e limpar o cache vão para o serviço pelo pipe local `\\.\pipe\DnsSwitcherService`:
+
+- O pipe aceita SYSTEM e Administradores, além de usuários conectados neste computador. Conexões pela rede são recusadas.
+- Cada pedido é uma linha, com um conjunto fixo de comandos. Os endereços precisam ser IPs válidos da família pedida. O adaptador precisa existir, e o próprio serviço descobre o índice da interface.
+- Os comandos são iniciados do `System32` pelo caminho completo, nunca por um shell, e só recebem endereços validados e um número como argumentos.
+- O caminho do serviço fica entre aspas na configuração do serviço.
+
+O app grava um único valor no registro, e só se você ligar **Start with Windows**: `DNS Switcher` em `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`. A configuração de DNS em si fica com o Windows.
 
 ```
 src/
   main.rs       interface (egui), modos simples e avançado
-  providers.rs  lista de resolvedores IPv4 e IPv6 por grupo
-  probe.rs      consultas DNS por UDP, leitura das respostas e estatísticas
+  tray.rs       ícone na área de notificação, menu e Start with Windows
+  service.rs    o serviço do Windows e seu pipe, e o lado cliente do app
+  ipc.rs        formato e validação dos pedidos
   sys.rs        netsh, ipconfig e adaptadores
+  probe.rs      consultas DNS por UDP, leitura das respostas e estatísticas
+  providers.rs  lista de resolvedores IPv4 e IPv6 por grupo
+installer/
+  dns-switcher.iss   script do Inno Setup
 ```
 
 ## Instalação
 
-Baixe `dns_switcher.exe` em [Releases](https://github.com/Devzinh/dns-switcher/releases) e abra. O Windows pede permissão de administrador, porque trocar o DNS exige isso.
+Baixe **`DNS-Switcher-Setup-<versão>.exe`** em [Releases](https://github.com/Devzinh/dns-switcher/releases) e execute. O instalador pede permissão de administrador uma vez e instala:
 
-O executável ainda não tem assinatura digital. Se o SmartScreen avisar, clique em **Mais informações** e depois em **Executar assim mesmo**. Outra opção é compilar você mesmo:
+- o app em `Arquivos de Programas\DNS Switcher`, com atalho no Menu Iniciar e desinstalação em **Configurações → Aplicativos**;
+- o **DNS Switcher Service**, que aparece no `services.msc`. Ele é a única parte que altera configurações de rede, então o app abre sem prompt do UAC;
+- opcionalmente, uma entrada que inicia o DNS Switcher na área de notificação quando você entra no Windows.
+
+Fechar a janela mantém o DNS Switcher na área de notificação. Clique no ícone para abrir, ou clique com o botão direito para trocar rápido, usar **Automatic**, **Find fastest** e **Start with Windows**. **Quit** nesse menu encerra o app.
+
+Desinstalar por **Configurações → Aplicativos** para e remove o serviço e a entrada de inicialização. O DNS atual não é alterado; clique em **Automatic** antes se quiser voltar ao DNS do seu provedor.
+
+O executável e o instalador ainda não têm assinatura digital, então o SmartScreen pode avisar: clique em **Mais informações** e depois em **Executar assim mesmo**. Cada release traz os hashes SHA-256, e o `dns_switcher.exe` traz informações de versão que você confere em **Propriedades → Detalhes**.
+
+### Sem instalar
+
+O `dns_switcher.exe` também roda sozinho. Sem o serviço ele consegue medir os resolvedores, mas para aplicar o DNS precisa ser aberto com **Executar como administrador**.
+
+### Compilando
 
 ```powershell
 git clone https://github.com/Devzinh/dns-switcher.git
 cd dns-switcher
 cargo build --release
-.\target\release\dns_switcher.exe
+& "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" installer\dns-switcher.iss
 ```
 
-Para compilar é preciso ter o Rust estável ([rustup.rs](https://rustup.rs)). O build de debug (`cargo run`) não pede administrador: dá para medir, mas para aplicar o DNS o terminal precisa estar elevado.
+Isso gera `target\release\dns_switcher.exe` e `installer\Output\DNS-Switcher-Setup-<versão>.exe`. É preciso ter o Rust estável ([rustup.rs](https://rustup.rs)) e, para o instalador, o [Inno Setup 6](https://jrsoftware.org/isinfo.php).
 
 Os testes rodam com `cargo test`. `cargo test -- --ignored --nocapture` também mede o 1.1.1.1 pela rede.
 
@@ -133,10 +169,11 @@ Hoje, **Find fastest** cronometra uma lista fixa. A ideia é que ele passe a res
 
 ### Uso diário
 
-- [ ] Ícone na bandeja com troca rápida
+- [x] Ícone na bandeja com troca rápida *(0.1.1)*
 - [ ] Perfis por rede (casa, trabalho, Wi-Fi público)
-- [x] Pedir permissão de administrador ao abrir *(0.1.1)*
-- [ ] Assinar o executável
+- [x] Instalador e serviço do Windows, para o app rodar sem permissão de administrador *(0.1.1)*
+- [ ] Assinar o executável e o instalador (por exemplo pela [SignPath Foundation](https://signpath.org), que assina projetos open source de graça)
+- [ ] Publicar no winget (`winget install DnsSwitcher`)
 - [ ] Interface em português, inglês e espanhol
 - [ ] Linha de comando para scripts: `dns_switcher --apply cloudflare --adapter "Wi-Fi"`
 

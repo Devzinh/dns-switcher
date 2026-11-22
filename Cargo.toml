@@ -13,13 +13,29 @@ path = "src/lib.rs"
 [[bin]]
 name = "dns_switcher"
 path = "src/main.rs"
-# Release builds require elevation (see build.rs), so the binary has no tests.
+# The binary has no unit tests of its own; they live in the library.
 test = false
 
 [dependencies]
 eframe = { version = "0.28", default-features = true }
 egui = "0.28"
 image = { version = "0.25", default-features = false, features = ["png", "ico"] }
+raw-window-handle = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+windows-service = "0.8"
+tray-icon = "0.26"
+winreg = "0.56"
+windows-sys = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Storage_FileSystem",
+    "Win32_System_IO",
+    "Win32_System_Pipes",
+    "Win32_System_Threading",
+    "Win32_UI_WindowsAndMessaging",
+] }
 
 [dev-dependencies]
 resvg = "0.45"
