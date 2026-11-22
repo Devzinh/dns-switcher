@@ -36,7 +36,7 @@ jobs:
     env:
       SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && vars.SIGNPATH_PROJECT_SLUG != '' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # rustup is preinstalled on GitHub runners; no third-party action needed.
       - name: Rust toolchain
@@ -62,7 +62,7 @@ jobs:
       - name: Upload unsigned app
         if: env.SIGN == 'true'
         id: unsigned-app
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unsigned-app
           path: target/release/dns_switcher.exe
@@ -94,7 +94,7 @@ jobs:
       - name: Upload unsigned installer
         if: env.SIGN == 'true'
         id: unsigned-setup
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: unsigned-setup
           path: installer/Output/DNS-Switcher-Setup-${{ steps.version.outputs.version }}.exe
@@ -126,14 +126,14 @@ jobs:
           Get-Content dist\SHA256SUMS.txt
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             dist/dns_switcher.exe
             dist/DNS-Switcher-Setup-*.exe
 
       - name: Keep files with this run
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: dns-switcher-${{ steps.version.outputs.version }}
           path: dist/
