@@ -1,4 +1,5 @@
 # Builds the app and the installer on GitHub-hosted Windows runners.
+# Actions are pinned to full commit SHAs (tag in the trailing comment).
 #
 # - Manual run (Actions > Release > Run workflow): build and test only; the files
 #   are attached to the run as an artifact.
@@ -35,9 +36,11 @@ jobs:
     env:
       SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && vars.SIGNPATH_PROJECT_SLUG != '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: dtolnay/rust-toolchain@stable
+      # rustup is preinstalled on GitHub runners; no third-party action needed.
+      - name: Rust toolchain
+        run: rustup toolchain install stable --profile minimal && rustup default stable
 
       - name: Version
         id: version
@@ -59,14 +62,14 @@ jobs:
       - name: Upload unsigned app
         if: env.SIGN == 'true'
         id: unsigned-app
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: unsigned-app
           path: target/release/dns_switcher.exe
 
       - name: Sign app
         if: env.SIGN == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -91,14 +94,14 @@ jobs:
       - name: Upload unsigned installer
         if: env.SIGN == 'true'
         id: unsigned-setup
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: unsigned-setup
           path: installer/Output/DNS-Switcher-Setup-${{ steps.version.outputs.version }}.exe
 
       - name: Sign installer
         if: env.SIGN == 'true'
-        uses: signpath/github-action-submit-signing-request@v3
+        uses: signpath/github-action-submit-signing-request@a2c5b60d9c75f073142b653c354b632eedce097b # v3.2
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
@@ -123,14 +126,14 @@ jobs:
           Get-Content dist\SHA256SUMS.txt
 
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: |
             dist/dns_switcher.exe
             dist/DNS-Switcher-Setup-*.exe
 
       - name: Keep files with this run
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dns-switcher-${{ steps.version.outputs.version }}
           path: dist/
