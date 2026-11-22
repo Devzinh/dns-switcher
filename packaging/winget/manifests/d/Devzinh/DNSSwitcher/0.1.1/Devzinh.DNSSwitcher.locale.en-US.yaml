@@ -1,4 +1,4 @@
-# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.10.0.schema.json
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.28.0.schema.json
 PackageIdentifier: Devzinh.DNSSwitcher
 PackageVersion: 0.1.1
 PackageLocale: en-US
@@ -27,4 +27,4 @@ Tags:
 - open-source
 ReleaseNotesUrl: https://github.com/Devzinh/dns-switcher/blob/v0.1.1/CHANGELOG.md
 ManifestType: defaultLocale
-ManifestVersion: 1.10.0
+ManifestVersion: 1.28.0
