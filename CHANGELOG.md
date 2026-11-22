@@ -18,6 +18,18 @@
 - Larger window so the new columns fit.
 - Removed Norton ConnectSafe (all three addresses no longer reply).
 
+### Resolvers
+
+The list grew from 37 to 47 IPv4 resolvers and from 21 to 30 IPv6. Every address was probed from a live connection before it went in.
+
+- **Added, general use:** Gcore, Control D Unfiltered, AdGuard Unfiltered, CIRA Canadian Shield Private, DNS.SB, AliDNS, Tencent DNSPod (IPv4 only).
+- **Added, malware blocking:** Quad9 Secured with ECS, Control D Malware Blocking, Control D Malware + Ads, CIRA Canadian Shield Protected.
+- **Added, family:** Control D Family Friendly, CIRA Canadian Shield Family.
+- **Renamed:** Verisign Public DNS and the Neustar entries are now listed as UltraDNS Public, their current operator.
+- **Removed:** DNS4EU IPv6 addresses, which did not answer in testing while the same DNS4EU services over IPv4 did. The IPv4 entries stay.
+- **Not added:** dns0.eu and Mullvad DNS (both shut down), UncensoredDNS and Quad101 (no reply in testing), the DNS.SB secondary IPv6 and DNSPod IPv6 (no reply or 40% loss).
+- New test `tests/live_resolvers.rs` probes every listed address and fails if any of them stops answering.
+
 ## 0.1.0 — 2026-11-21
 
 First public release.

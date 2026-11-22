@@ -32,7 +32,7 @@ Above is the exact packet the **Find fastest** button sends. The same packet goe
 
 **Simple mode.** Five well-known resolvers, each with one line saying what it's for. Pick one and click **Apply DNS**. The **Automatic** button gives you back your provider's DNS.
 
-**Advanced mode.** More than 30 resolvers in three groups: general use, malware blocking and family filtering. It also has IPv6, a custom server and network adapter selection.
+**Advanced mode.** 47 resolvers in three groups: general use, malware blocking and family filtering. It also has IPv6, a custom server and network adapter selection.
 
 **Find fastest** measures every server on screen and selects the fastest. **Flush DNS** clears the Windows cache, so the change takes effect right away. The window also shows which DNS your adapter is using right now.
 
@@ -97,11 +97,17 @@ What changed in each version is in the [changelog](CHANGELOG.md).
 
 | Group | Purpose | Examples |
 |---|---|---|
-| Default | General use | Cloudflare, Google, Quad9, OpenDNS, AdGuard, NextDNS, DNS4EU |
-| Secure | Blocks malware and phishing | Cloudflare 1.1.1.2, CleanBrowsing Secure, DNS4EU Protective |
-| Family Safe | Blocks adult content | Cloudflare 1.1.1.3, OpenDNS FamilyShield, AdGuard Family |
+| Default | General use | Cloudflare, Google, Quad9, Gcore, Control D, AdGuard, OpenDNS, NextDNS, CIRA Canadian Shield, DNS4EU, DNS.SB, AliDNS |
+| Secure | Blocks malware and phishing | Cloudflare 1.1.1.2, Quad9 with ECS, Control D, CIRA Protected, CleanBrowsing Secure, DNS4EU Protective |
+| Family Safe | Blocks adult content | Cloudflare 1.1.1.3, OpenDNS FamilyShield, Control D Family, CIRA Family, AdGuard Family |
 
-The full list is in [`src/providers.rs`](src/providers.rs). Some services on it change hands over time (Verisign and Neustar public DNS are now run by UltraDNS), and servers that stop replying show 100% loss and are never picked.
+The full list is in [`src/providers.rs`](src/providers.rs). Every address on it answered in a live test before release. Services change hands over time (Verisign and Neustar public DNS are now UltraDNS Public), and a server that stops replying shows 100% loss and is never picked.
+
+To check the whole list from your own connection:
+
+```powershell
+cargo test --release --test live_resolvers -- --ignored --nocapture
+```
 
 ## Roadmap
 

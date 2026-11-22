@@ -32,7 +32,7 @@ Acima está o pacote exato que o botão **Find fastest** envia. O mesmo pacote v
 
 **Modo simples.** Cinco resolvedores conhecidos, cada um com uma linha dizendo para que serve. Escolha um e clique em **Apply DNS**. O botão **Automatic** devolve o DNS do seu provedor.
 
-**Modo avançado.** Mais de 30 resolvedores em três grupos: uso geral, bloqueio de malware e filtro para família. Também tem IPv6, servidor personalizado e escolha do adaptador de rede.
+**Modo avançado.** 47 resolvedores em três grupos: uso geral, bloqueio de malware e filtro para família. Também tem IPv6, servidor personalizado e escolha do adaptador de rede.
 
 **Find fastest** mede todos os servidores da tela e seleciona o mais rápido. **Flush DNS** limpa o cache do Windows, então a troca vale na hora. A janela também mostra qual DNS o adaptador está usando agora.
 
@@ -97,11 +97,17 @@ O que mudou em cada versão está no [changelog](CHANGELOG.md).
 
 | Grupo | Para quê | Exemplos |
 |---|---|---|
-| Default | Uso geral | Cloudflare, Google, Quad9, OpenDNS, AdGuard, NextDNS, DNS4EU |
-| Secure | Bloqueia malware e phishing | Cloudflare 1.1.1.2, CleanBrowsing Secure, DNS4EU Protective |
-| Family Safe | Bloqueia conteúdo adulto | Cloudflare 1.1.1.3, OpenDNS FamilyShield, AdGuard Family |
+| Default | Uso geral | Cloudflare, Google, Quad9, Gcore, Control D, AdGuard, OpenDNS, NextDNS, CIRA Canadian Shield, DNS4EU, DNS.SB, AliDNS |
+| Secure | Bloqueia malware e phishing | Cloudflare 1.1.1.2, Quad9 com ECS, Control D, CIRA Protected, CleanBrowsing Secure, DNS4EU Protective |
+| Family Safe | Bloqueia conteúdo adulto | Cloudflare 1.1.1.3, OpenDNS FamilyShield, Control D Family, CIRA Family, AdGuard Family |
 
-A lista completa está em [`src/providers.rs`](src/providers.rs). Alguns serviços mudam de dono com o tempo (os DNS públicos da Verisign e da Neustar hoje são operados pela UltraDNS), e servidores que param de responder aparecem com 100% de perda e nunca são escolhidos.
+A lista completa está em [`src/providers.rs`](src/providers.rs). Todos os endereços dela responderam em um teste ao vivo antes da publicação. Os serviços mudam de dono com o tempo (os DNS públicos da Verisign e da Neustar hoje são o UltraDNS Public), e um servidor que para de responder aparece com 100% de perda e nunca é escolhido.
+
+Para conferir a lista inteira a partir da sua conexão:
+
+```powershell
+cargo test --release --test live_resolvers -- --ignored --nocapture
+```
 
 ## Roadmap
 
