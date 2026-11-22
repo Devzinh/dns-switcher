@@ -108,7 +108,7 @@ Closing the window keeps DNS Switcher in the notification area. Click the icon t
 
 Uninstalling from **Settings → Apps** stops and removes the service and the sign-in entry. It doesn't change your current DNS; click **Automatic** first if you want your provider's DNS back.
 
-The executable and setup aren't digitally signed yet, so SmartScreen may warn you: click **More info** and then **Run anyway**. Each release lists SHA-256 hashes, and `dns_switcher.exe` carries version information you can check in **Properties → Details**.
+The executable and setup aren't digitally signed yet, so SmartScreen may warn you: click **More info** and then **Run anyway**. See the [code signing policy](CODE_SIGNING.md) for how releases are built and will be signed. Each release lists SHA-256 hashes, and `dns_switcher.exe` carries version information you can check in **Properties → Details**.
 
 ### Without installing
 
@@ -208,6 +208,10 @@ Click <b>Automatic</b> in simple mode or <b>Default</b> in advanced mode. That's
 To add or fix a resolver, edit `src/providers.rs` and include a link to the service's official page in the pull request. Run `cargo fmt` and `cargo clippy` before opening the PR.
 
 When reporting a bug, include your Windows version and language, and paste the output of `netsh interface ipv4 show interfaces`.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org), once the project's application is approved. Releases are built by GitHub Actions from this repository. Team roles, the privacy statement and what the installer changes are in [CODE_SIGNING.md](CODE_SIGNING.md).
 
 ## License
 

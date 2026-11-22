@@ -1,0 +1,146 @@
+# Builds the app and the installer on GitHub-hosted Windows runners.
+#
+# - Manual run (Actions > Release > Run workflow): build and test only; the files
+#   are attached to the run as an artifact.
+# - Pushing a tag like v0.1.2: same build, then a *draft* release with the
+#   files is created for a maintainer to review and publish.
+#
+# Every published file gets a GitHub build provenance attestation, so anyone
+# can check it was built here from this repository:
+#   gh attestation verify DNS-Switcher-Setup-0.1.2.exe -R Devzinh/dns-switcher
+#
+# Code signing through SignPath runs only when the repository variables
+# SIGNPATH_ORGANIZATION_ID and SIGNPATH_PROJECT_SLUG and the secret
+# SIGNPATH_API_TOKEN are set (see CODE_SIGNING.md). Without them the files
+# are built unsigned.
+
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    permissions:
+      contents: write      # create the draft release
+      id-token: write      # build provenance attestation
+      attestations: write
+      actions: read        # SignPath reads the uploaded artifact
+    env:
+      SIGN: ${{ vars.SIGNPATH_ORGANIZATION_ID != '' && vars.SIGNPATH_PROJECT_SLUG != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Version
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Select-String -Path Cargo.toml -Pattern '^version\s*=\s*"(.+)"').Matches[0].Groups[1].Value
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$v") {
+            throw "Tag $env:GITHUB_REF_NAME does not match Cargo.toml version $v"
+          }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Test
+        run: cargo test --release
+
+      - name: Build
+        run: cargo build --release
+
+      # ---- sign dns_switcher.exe (optional) ----
+      - name: Upload unsigned app
+        if: env.SIGN == 'true'
+        id: unsigned-app
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-app
+          path: target/release/dns_switcher.exe
+
+      - name: Sign app
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: app
+          github-artifact-id: ${{ steps.unsigned-app.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: target/release
+
+      # ---- installer ----
+      - name: Install Inno Setup
+        run: choco install innosetup --yes --no-progress
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.version }}" installer\dns-switcher.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      # ---- sign the installer (optional) ----
+      - name: Upload unsigned installer
+        if: env.SIGN == 'true'
+        id: unsigned-setup
+        uses: actions/upload-artifact@v4
+        with:
+          name: unsigned-setup
+          path: installer/Output/DNS-Switcher-Setup-${{ steps.version.outputs.version }}.exe
+
+      - name: Sign installer
+        if: env.SIGN == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: installer
+          github-artifact-id: ${{ steps.unsigned-setup.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: installer/Output
+
+      # ---- package, attest, publish ----
+      - name: Collect files and hashes
+        shell: pwsh
+        run: |
+          $v = "${{ steps.version.outputs.version }}"
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item target\release\dns_switcher.exe dist\
+          Copy-Item "installer\Output\DNS-Switcher-Setup-$v.exe" dist\
+          Get-ChildItem dist | ForEach-Object {
+            "{0}  {1}" -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name
+          } | Set-Content -Encoding ascii dist\SHA256SUMS.txt
+          Get-Content dist\SHA256SUMS.txt
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/dns_switcher.exe
+            dist/DNS-Switcher-Setup-*.exe
+
+      - name: Keep files with this run
+        uses: actions/upload-artifact@v4
+        with:
+          name: dns-switcher-${{ steps.version.outputs.version }}
+          path: dist/
+
+      - name: Draft release
+        if: github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create $env:GITHUB_REF_NAME dist\* --draft --verify-tag `
+            --title "DNS Switcher ${{ steps.version.outputs.version }}" `
+            --notes "Built by GitHub Actions from $env:GITHUB_SHA. Signed: $env:SIGN. Hashes are in SHA256SUMS.txt."

@@ -108,7 +108,7 @@ Fechar a janela mantém o DNS Switcher na área de notificação. Clique no íco
 
 Desinstalar por **Configurações → Aplicativos** para e remove o serviço e a entrada de inicialização. O DNS atual não é alterado; clique em **Automatic** antes se quiser voltar ao DNS do seu provedor.
 
-O executável e o instalador ainda não têm assinatura digital, então o SmartScreen pode avisar: clique em **Mais informações** e depois em **Executar assim mesmo**. Cada release traz os hashes SHA-256, e o `dns_switcher.exe` traz informações de versão que você confere em **Propriedades → Detalhes**.
+O executável e o instalador ainda não têm assinatura digital, então o SmartScreen pode avisar: clique em **Mais informações** e depois em **Executar assim mesmo**. A [política de assinatura de código](CODE_SIGNING.md) (code signing policy) explica como as versões são compiladas e serão assinadas. Cada release traz os hashes SHA-256, e o `dns_switcher.exe` traz informações de versão que você confere em **Propriedades → Detalhes**.
 
 ### Sem instalar
 
@@ -208,6 +208,10 @@ Clique em <b>Automatic</b> no modo simples ou em <b>Default</b> no avançado. Is
 Para adicionar ou corrigir um resolvedor, edite `src/providers.rs` e coloque no pull request o link para a página oficial do serviço. Antes de abrir o PR, rode `cargo fmt` e `cargo clippy`.
 
 Ao relatar um bug, informe a versão e o idioma do Windows e cole a saída de `netsh interface ipv4 show interfaces`.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org), assim que o pedido do projeto for aprovado. As versões são compiladas pelo GitHub Actions a partir deste repositório. Papéis da equipe, a declaração de privacidade e o que o instalador altera estão em [CODE_SIGNING.md](CODE_SIGNING.md).
 
 ## Licença
 

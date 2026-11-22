@@ -9,7 +9,10 @@
 ; needs administrator rights), and adds Start menu entries and an uninstaller.
 
 #define AppName "DNS Switcher"
-#define AppVersion "0.1.1"
+; CI passes the version from Cargo.toml with /DAppVersion=x.y.z.
+#ifndef AppVersion
+  #define AppVersion "0.1.1"
+#endif
 #define AppExe "dns_switcher.exe"
 #define ServiceName "DnsSwitcher"
 #define RepoUrl "https://github.com/Devzinh/dns-switcher"
@@ -77,6 +80,8 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 ; setup, not as the administrator account that approved the UAC prompt.
 Filename: "{app}\{#AppExe}"; Parameters: "--set-autostart"; Tasks: startup; Flags: runasoriginaluser runhidden waituntilterminated
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent runasoriginaluser
+; Silent installs and upgrades (winget) bring the tray icon back right away.
+Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Tasks: startup; Flags: nowait skipifnotsilent runasoriginaluser
 
 [UninstallRun]
 Filename: "{app}\{#AppExe}"; Parameters: "--clear-autostart"; Flags: runhidden waituntilterminated; RunOnceId: "ClearAutostart"
