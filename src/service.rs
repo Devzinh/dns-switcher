@@ -61,6 +61,7 @@ fn service_main(_args: Vec<OsString>) {
     let Ok(status) = service_control_handler::register(ipc::SERVICE_NAME, handler) else { return };
     let _ = STATUS.set(status);
     report(ServiceState::Running, ServiceControlAccept::STOP | ServiceControlAccept::SHUTDOWN);
+    crate::updater::start_background();
     serve_forever();
     report(ServiceState::Stopped, ServiceControlAccept::empty());
 }
@@ -81,6 +82,9 @@ fn handle(pipe: std::fs::File) {
     let read = (&mut reader).take(ipc::MAX_LINE as u64 + 2).read_line(&mut line);
     let reply = match read {
         Ok(_) => match Request::decode(&line) {
+            Ok(Request::UpdateStatus) => Ok(crate::updater::status()),
+            Ok(Request::UpdateNow) => crate::updater::check_and_install(),
+            Ok(Request::AutoUpdate(on)) => crate::updater::set_auto(on),
             Ok(req) => sys::execute(&req),
             Err(e) => Err(format!("rejected: {e}")),
         },

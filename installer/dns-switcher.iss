@@ -60,9 +60,12 @@ en.ServiceDescription=Changes DNS settings on behalf of the DNS Switcher app. Ac
 ptbr.ServiceDescription=Altera as configurações de DNS a pedido do app DNS Switcher. Aceita pedidos apenas de usuários conectados neste computador.
 en.LaunchApp=Open DNS Switcher
 ptbr.LaunchApp=Abrir o DNS Switcher
+en.AutoUpdateTask=Keep DNS Switcher up to date automatically (checks GitHub for signed releases)
+ptbr.AutoUpdateTask=Manter o DNS Switcher atualizado automaticamente (consulta o GitHub por versões assinadas)
 
 [Tasks]
 Name: "startup"; Description: "{cm:StartupTask}"
+Name: "autoupdate"; Description: "{cm:AutoUpdateTask}"
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
 
 [Files]
@@ -75,13 +78,20 @@ Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExe}"
 Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
+[Registry]
+; Read by the service. The app's "Update automatically" menu item changes it
+; through the service.
+Root: HKLM; Subkey: "SOFTWARE\DNS Switcher"; Flags: uninsdeletekey
+Root: HKLM; Subkey: "SOFTWARE\DNS Switcher"; ValueType: dword; ValueName: "AutoUpdate"; ValueData: "1"; Tasks: autoupdate
+Root: HKLM; Subkey: "SOFTWARE\DNS Switcher"; ValueType: dword; ValueName: "AutoUpdate"; ValueData: "0"; Tasks: not autoupdate
+
 [Run]
 ; The sign-in entry is per user, so the app writes it as the user who started
 ; setup, not as the administrator account that approved the UAC prompt.
-Filename: "{app}\{#AppExe}"; Parameters: "--set-autostart"; Tasks: startup; Flags: runasoriginaluser runhidden waituntilterminated
+Filename: "{app}\{#AppExe}"; Parameters: "--set-autostart"; Tasks: startup; Check: not FromService; Flags: runasoriginaluser runhidden waituntilterminated
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent runasoriginaluser
 ; Silent installs and upgrades (winget) bring the tray icon back right away.
-Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Tasks: startup; Flags: nowait skipifnotsilent runasoriginaluser
+Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Tasks: startup; Check: not FromService; Flags: nowait skipifnotsilent runasoriginaluser
 
 [UninstallRun]
 Filename: "{app}\{#AppExe}"; Parameters: "--clear-autostart"; Flags: runhidden waituntilterminated; RunOnceId: "ClearAutostart"
@@ -90,9 +100,21 @@ Filename: "{sys}\sc.exe"; Parameters: "stop {#ServiceName}"; Flags: runhidden; R
 Filename: "{sys}\sc.exe"; Parameters: "delete {#ServiceName}"; Flags: runhidden; RunOnceId: "DeleteService"
 
 [UninstallDelete]
+Type: filesandordirs; Name: "{app}\updates"
 Type: dirifempty; Name: "{app}"
 
 [Code]
+{ True when the DNS Switcher service started this setup for an automatic update. }
+function FromService: Boolean;
+var
+  I: Integer;
+begin
+  Result := False;
+  for I := 1 to ParamCount do
+    if CompareText(ParamStr(I), '/FROMSERVICE') = 0 then
+      Result := True;
+end;
+
 function Sc(const Params: String): Integer;
 var
   Code: Integer;

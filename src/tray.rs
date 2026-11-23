@@ -23,6 +23,7 @@ static PENDING: Mutex<Option<String>> = Mutex::new(None);
 
 thread_local! {
     static UI: RefCell<Option<(TrayIcon, MenuItem)>> = const { RefCell::new(None) };
+    static AUTO_UPDATE_ITEM: RefCell<Option<CheckMenuItem>> = const { RefCell::new(None) };
 }
 
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
@@ -38,6 +39,8 @@ pub fn install(adapter: Arc<Mutex<String>>, wake: impl Fn() + Send + Sync + 'sta
     let fastest = MenuItem::new("Find fastest and use it", true, None);
     let flush = MenuItem::new("Flush DNS cache", true, None);
     let startup = CheckMenuItem::new("Start with Windows", true, autostart_enabled(), None);
+    let check_updates = MenuItem::new("Check for updates", true, None);
+    let auto_update = CheckMenuItem::new("Update automatically", true, crate::updater::auto_enabled(), None);
     let quit = MenuItem::new("Quit", true, None);
 
     let menu = Menu::new();
@@ -46,7 +49,7 @@ pub fn install(adapter: Arc<Mutex<String>>, wake: impl Fn() + Send + Sync + 'sta
     for q in &quick {
         menu.append(q).map_err(|e| e.to_string())?;
     }
-    menu.append_items(&[&auto, &sep(), &fastest, &flush, &sep(), &startup, &quit])
+    menu.append_items(&[&auto, &sep(), &fastest, &flush, &sep(), &check_updates, &auto_update, &startup, &sep(), &quit])
         .map_err(|e| e.to_string())?;
 
     let img = image::load_from_memory(include_bytes!("../assets/icon.png")).map_err(|e| e.to_string())?;
@@ -68,13 +71,16 @@ pub fn install(adapter: Arc<Mutex<String>>, wake: impl Fn() + Send + Sync + 'sta
         flush.id().clone(),
         startup.id().clone(),
         quit.id().clone(),
+        check_updates.id().clone(),
+        auto_update.id().clone(),
     );
+    AUTO_UPDATE_ITEM.with(|c| *c.borrow_mut() = Some(auto_update));
     UI.with(|ui| *ui.borrow_mut() = Some((tray, status)));
     start_timer();
 
     let wake = Arc::new(wake);
     MenuEvent::set_event_handler(Some(move |e: MenuEvent| {
-        let (open, quick, auto, fastest, flush, startup, quit) = &ids;
+        let (open, quick, auto, fastest, flush, startup, quit, check_updates, auto_update) = &ids;
         let id = &e.id;
         let current = adapter.lock().map(|a| a.clone()).unwrap_or_default();
         if id == open {
@@ -109,6 +115,13 @@ pub fn install(adapter: Arc<Mutex<String>>, wake: impl Fn() + Send + Sync + 'sta
                 Ok(()) => set_pending(if on { "Starts with Windows" } else { "Won't start with Windows" }.into()),
                 Err(e) => set_pending(e),
             }
+        } else if id == check_updates {
+            set_pending("Checking for updates…".into());
+            background(&wake, || service::perform(&Request::UpdateNow));
+        } else if id == auto_update {
+            // The menu has already toggled the check mark; send the new state.
+            let on = AUTO_UPDATE_ITEM.with(|c| c.borrow().as_ref().map(|i| i.is_checked())).unwrap_or(false);
+            background(&wake, move || service::perform(&Request::AutoUpdate(on)));
         } else if id == quit {
             std::process::exit(0);
         }

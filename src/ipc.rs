@@ -23,6 +23,12 @@ pub enum Request {
     Ping,
     Flush,
     Restore { adapter: String },
+    /// Installed and latest version, and whether automatic updates are on.
+    UpdateStatus,
+    /// Check now and install a newer signed release if there is one.
+    UpdateNow,
+    /// Turn automatic updates on or off.
+    AutoUpdate(bool),
     Apply { adapter: String, ipv6: bool, dns1: IpAddr, dns2: Option<IpAddr> },
 }
 
@@ -42,6 +48,9 @@ impl Request {
         match self {
             Request::Ping => "PING".into(),
             Request::Flush => "FLUSH".into(),
+            Request::UpdateStatus => "UPDATE_STATUS".into(),
+            Request::UpdateNow => "UPDATE_NOW".into(),
+            Request::AutoUpdate(on) => format!("AUTOUPDATE\t{}", u8::from(*on)),
             Request::Restore { adapter } => format!("RESTORE\t{adapter}"),
             Request::Apply { adapter, ipv6, dns1, dns2 } => format!(
                 "APPLY\t{adapter}\t{}\t{dns1}\t{}",
@@ -60,6 +69,10 @@ impl Request {
         match f.as_slice() {
             ["PING"] => Ok(Request::Ping),
             ["FLUSH"] => Ok(Request::Flush),
+            ["UPDATE_STATUS"] => Ok(Request::UpdateStatus),
+            ["UPDATE_NOW"] => Ok(Request::UpdateNow),
+            ["AUTOUPDATE", "1"] => Ok(Request::AutoUpdate(true)),
+            ["AUTOUPDATE", "0"] => Ok(Request::AutoUpdate(false)),
             ["RESTORE", adapter] => Ok(Request::Restore { adapter: check_adapter(adapter)? }),
             ["APPLY", adapter, fam, dns1, dns2] => {
                 let ipv6 = match *fam {
@@ -127,6 +140,10 @@ mod tests {
             Request::Ping,
             Request::Flush,
             Request::Restore { adapter: "Wi-Fi 2".into() },
+            Request::UpdateStatus,
+            Request::UpdateNow,
+            Request::AutoUpdate(true),
+            Request::AutoUpdate(false),
             Request::apply("Ethernet", false, "1.1.1.1", "1.0.0.1").unwrap(),
             Request::apply("Ethernet", true, "2606:4700:4700::1111", "").unwrap(),
         ];
@@ -151,6 +168,7 @@ mod tests {
         assert!(Request::decode("RESTORE\tbad\"name").is_err());
         assert!(Request::decode("RESTORE\t").is_err());
         assert!(Request::decode("RUN\tcmd.exe").is_err());
+        assert!(Request::decode("AUTOUPDATE\tyes").is_err());
         assert!(Request::decode(&"A".repeat(MAX_LINE + 1)).is_err());
     }
 

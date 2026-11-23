@@ -88,6 +88,9 @@ fn index_of(adapter: &str) -> Result<String, String> {
 pub fn execute(req: &Request) -> Result<String, String> {
     match req {
         Request::Ping => Ok("pong".into()),
+        Request::UpdateStatus | Request::UpdateNow | Request::AutoUpdate(_) => {
+            Err("Updates are handled by the DNS Switcher service; install DNS Switcher with its setup program.".into())
+        }
         Request::Flush => {
             run("ipconfig.exe", &["/flushdns"])?;
             Ok("Successfully flushed the DNS resolver cache.".into())

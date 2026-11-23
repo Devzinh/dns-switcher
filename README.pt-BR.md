@@ -89,6 +89,8 @@ src/
   tray.rs       ícone na área de notificação, menu e Start with Windows
   service.rs    o serviço do Windows e seu pipe, e o lado cliente do app
   ipc.rs        formato e validação dos pedidos
+  update.rs     busca da release, verificação de assinatura e hash
+  updater.rs    atualizações automáticas dentro do serviço
   sys.rs        netsh, ipconfig e adaptadores
   probe.rs      consultas DNS por UDP, leitura das respostas e estatísticas
   providers.rs  lista de resolvedores IPv4 e IPv6 por grupo
@@ -102,7 +104,8 @@ Baixe **`DNS-Switcher-Setup-<versão>.exe`** em [Releases](https://github.com/De
 
 - o app em `Arquivos de Programas\DNS Switcher`, com atalho no Menu Iniciar e desinstalação em **Configurações → Aplicativos**;
 - o **DNS Switcher Service**, que aparece no `services.msc`. Ele é a única parte que altera configurações de rede, então o app abre sem prompt do UAC;
-- opcionalmente, uma entrada que inicia o DNS Switcher na área de notificação quando você entra no Windows.
+- opcionalmente, uma entrada que inicia o DNS Switcher na área de notificação quando você entra no Windows;
+- opcionalmente, atualizações automáticas (veja [Atualizações](#atualizações)).
 
 Fechar a janela mantém o DNS Switcher na área de notificação. Clique no ícone para abrir, ou clique com o botão direito para trocar rápido, usar **Automatic**, **Find fastest** e **Start with Windows**. **Quit** nesse menu encerra o app.
 
@@ -128,6 +131,19 @@ Isso gera `target\release\dns_switcher.exe` e `installer\Output\DNS-Switcher-Set
 Os testes rodam com `cargo test`. `cargo test -- --ignored --nocapture` também mede o 1.1.1.1 pela rede.
 
 O que mudou em cada versão está no [changelog](CHANGELOG.md).
+
+## Atualizações
+
+Com **Manter o DNS Switcher atualizado automaticamente** marcado na instalação, ou **Update automatically** ligado no menu da área de notificação, o serviço do DNS Switcher consulta a última versão deste repositório a cada seis horas e instala versões novas sozinho, sem prompt do UAC. **Check for updates** no mesmo menu verifica na hora.
+
+Uma atualização só é instalada se passar em todas as verificações:
+
+- Vem de uma release publicada deste repositório no GitHub, por HTTPS, e a versão é mais nova que a instalada. Uma versão antiga nunca é aceita como atualização.
+- O `SHA256SUMS.txt` da release traz uma assinatura Ed25519 feita pelo workflow de release com uma chave guardada como secret do GitHub Actions. O app traz a chave pública ([`update-key.pub`](update-key.pub)) embutida e recusa qualquer outra assinatura.
+- O instalador baixado bate com o hash assinado.
+- O instalador é salvo em `Program Files\DNS Switcher\updates`, onde só administradores gravam, então não pode ser trocado entre a verificação e a instalação.
+
+Se o ícone da bandeja estava aberto, ele reabre depois da atualização. As atualizações só falam com `api.github.com` e `github.com`, e não enviam nada além do próprio pedido.
 
 ## Resolvedores incluídos
 

@@ -89,6 +89,8 @@ src/
   tray.rs       notification-area icon, menu and Start with Windows
   service.rs    the Windows service and its pipe, plus the app's client side
   ipc.rs        request format and validation
+  update.rs     release lookup, signature and hash checks
+  updater.rs    automatic updates inside the service
   sys.rs        netsh, ipconfig and adapters
   probe.rs      DNS queries over UDP, reply parsing and statistics
   providers.rs  IPv4 and IPv6 resolver list, by group
@@ -102,7 +104,8 @@ Download **`DNS-Switcher-Setup-<version>.exe`** from [Releases](https://github.c
 
 - the app in `Program Files\DNS Switcher`, with a Start menu entry and an uninstaller in **Settings → Apps**;
 - **DNS Switcher Service**, which you can see in `services.msc`. It's the only part that changes network settings, so the app itself opens without a UAC prompt;
-- optionally, an entry that starts DNS Switcher in the notification area when you sign in.
+- optionally, an entry that starts DNS Switcher in the notification area when you sign in;
+- optionally, automatic updates (see [Updates](#updates)).
 
 Closing the window keeps DNS Switcher in the notification area. Click the icon to open it, or right-click for quick switching, **Automatic**, **Find fastest** and **Start with Windows**. **Quit** in that menu closes it.
 
@@ -128,6 +131,19 @@ This builds `target\release\dns_switcher.exe` and `installer\Output\DNS-Switcher
 Run the tests with `cargo test`. `cargo test -- --ignored --nocapture` also probes 1.1.1.1 over the network.
 
 What changed in each version is in the [changelog](CHANGELOG.md).
+
+## Updates
+
+With **Keep DNS Switcher up to date automatically** checked in setup, or **Update automatically** on in the notification-area menu, the DNS Switcher service checks this repository's latest release every six hours and installs newer versions on its own, without a UAC prompt. **Check for updates** in the same menu checks right away.
+
+An update is installed only if every check passes:
+
+- It comes from a published GitHub release of this repository, over HTTPS, and its version is newer than the installed one, so an older release can never be pushed as an update.
+- The release's `SHA256SUMS.txt` carries an Ed25519 signature made by the release workflow with a key kept as a GitHub Actions secret. The app has the public key ([`update-key.pub`](update-key.pub)) built in and rejects any other signature.
+- The downloaded installer matches the signed hash.
+- The installer is saved under `Program Files\DNS Switcher\updates`, which only administrators can write to, so it can't be swapped between the check and the install.
+
+If the tray icon was open, it opens again after the update. Updates contact only `api.github.com` and `github.com`, and send nothing but the request itself.
 
 ## Included resolvers
 

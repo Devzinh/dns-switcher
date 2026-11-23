@@ -3,6 +3,7 @@
 mod service;
 mod sys;
 mod tray;
+mod updater;
 
 use eframe::egui;
 use dns_switcher::ipc::Request;

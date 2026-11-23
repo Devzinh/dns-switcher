@@ -30,7 +30,8 @@ In practice that means:
 
 - **Find fastest** and the measurement columns send DNS queries (for `www.google.com`, a random name under `google.com`, and `id.server`) to the resolvers on screen, and only when you click it.
 - Applying a DNS server changes your network adapter's settings, which is the point of the app. From then on your computer sends its DNS lookups to the server you picked, under that operator's privacy policy.
-- There is no telemetry, no update check and no account.
+- If automatic updates are on (an option in setup and in the notification-area menu), the service asks `api.github.com` for this repository's latest release every six hours and downloads it from `github.com` when it's newer. **Check for updates** does the same once. Nothing else is sent.
+- There is no telemetry and no account.
 
 ## What the installer changes
 
@@ -38,6 +39,7 @@ The setup program, which asks for administrator rights once:
 
 - installs the app to `Program Files\DNS Switcher`, with a Start menu entry;
 - registers and starts **DNS Switcher Service** (`services.msc`), which changes DNS settings on the app's behalf;
-- if you keep the option checked, adds `DNS Switcher` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` to start the app in the notification area when you sign in.
+- if you keep the option checked, adds `DNS Switcher` under `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` to start the app in the notification area when you sign in;
+- stores the automatic-update choice as `AutoUpdate` under `HKLM\SOFTWARE\DNS Switcher`. Updates are installed only when their hash list is signed with the release key (see the README's Updates section).
 
 Uninstall from **Settings → Apps**. Uninstalling stops and removes the service and the sign-in entry. It doesn't change your current DNS: click **Automatic** first to go back to your provider's DNS.
