@@ -2,6 +2,12 @@
 
 ## 0.1.2 — 2026-11-23
 
+### Automatic updates
+
+- The DNS Switcher service can keep the app up to date on its own: it checks this repository's latest release every six hours and installs newer versions silently, without a UAC prompt. It's an option in setup (on by default) and in the notification-area menu (**Update automatically**), and **Check for updates** checks right away.
+- An update installs only if its hash list carries a valid Ed25519 signature from the release key, the installer matches the signed hash, and the version is newer than the installed one. Anything else is discarded.
+- If the tray icon was open, it opens again after the update.
+
 ### Fixed
 
 - `dns_switcher.exe` no longer needs the Visual C++ Redistributable. It used to depend on `VCRUNTIME140.dll`, so on a Windows install without it the app couldn't start, the service couldn't run, and a silent install stopped at a "DLL not found" dialog. The C runtime is now linked into the executable.
