@@ -11,7 +11,7 @@
 #define AppName "DNS Switcher"
 ; CI passes the version from Cargo.toml with /DAppVersion=x.y.z.
 #ifndef AppVersion
-  #define AppVersion "0.1.1"
+  #define AppVersion "0.1.2"
 #endif
 #define AppExe "dns_switcher.exe"
 #define ServiceName "DnsSwitcher"

@@ -22,13 +22,13 @@ fn main() {
         .set("Comments", "Open source: https://github.com/Devzinh/dns-switcher")
         .set("ProductVersion", &version)
         .set("FileVersion", &version)
-        .set_manifest(MANIFEST);
+        .set_manifest(&MANIFEST.replace("{VERSION}", &format!("{version}.0")));
     res.compile().expect("embed Windows resources");
 }
 
 const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity type="win32" name="DnsSwitcher.App" version="0.1.1.0" processorArchitecture="*"/>
+  <assemblyIdentity type="win32" name="DnsSwitcher.App" version="{VERSION}" processorArchitecture="*"/>
   <description>DNS Switcher</description>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>

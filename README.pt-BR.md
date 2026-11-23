@@ -211,7 +211,7 @@ Ao relatar um bug, informe a versão e o idioma do Windows e cole a saída de `n
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org), assim que o pedido do projeto for aprovado. As versões são compiladas pelo GitHub Actions a partir deste repositório. Papéis da equipe, a declaração de privacidade e o que o instalador altera estão em [CODE_SIGNING.md](CODE_SIGNING.md).
+As versões ainda não têm assinatura de código. A partir da 0.1.2 elas são compiladas pelo GitHub Actions a partir deste repositório, e cada arquivo traz uma atestação de procedência que você confere com `gh attestation verify <arquivo> -R Devzinh/dns-switcher`. O projeto vai se candidatar de novo à assinatura gratuita da SignPath Foundation quando tiver mais adoção. Papéis da equipe, a declaração de privacidade e o que o instalador altera estão em [CODE_SIGNING.md](CODE_SIGNING.md).
 
 ## Licença
 

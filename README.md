@@ -211,7 +211,7 @@ When reporting a bug, include your Windows version and language, and paste the o
 
 ## Code signing policy
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org), once the project's application is approved. Releases are built by GitHub Actions from this repository. Team roles, the privacy statement and what the installer changes are in [CODE_SIGNING.md](CODE_SIGNING.md).
+Releases are not code-signed yet. From 0.1.2 on they're built by GitHub Actions from this repository, and each file carries a build provenance attestation you can verify with `gh attestation verify <file> -R Devzinh/dns-switcher`. The project will apply again to SignPath Foundation for free code signing once it has wider adoption. Team roles, the privacy statement and what the installer changes are in [CODE_SIGNING.md](CODE_SIGNING.md).
 
 ## License
 

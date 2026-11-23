@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.2 — 2026-11-23
+
+### Fixed
+
+- `dns_switcher.exe` no longer needs the Visual C++ Redistributable. It used to depend on `VCRUNTIME140.dll`, so on a Windows install without it the app couldn't start, the service couldn't run, and a silent install stopped at a "DLL not found" dialog. The C runtime is now linked into the executable.
+- After a silent install or upgrade (for example through winget), the notification-area icon starts again right away instead of at the next sign-in.
+
+### Build
+
+- First release built by GitHub Actions from the public repository, with a build provenance attestation for every file (`gh attestation verify <file> -R Devzinh/dns-switcher`).
+
 ## 0.1.1 — 2026-11-22
 
 ### Measurement

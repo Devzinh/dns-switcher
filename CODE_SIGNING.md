@@ -2,9 +2,9 @@
 
 Windows releases of DNS Switcher (`dns_switcher.exe` and `DNS-Switcher-Setup-<version>.exe`) are built by [GitHub Actions](.github/workflows/release.yml) on GitHub-hosted runners, from this public repository only.
 
-Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org).
+Releases are currently **not code-signed**. The project applied to [SignPath Foundation](https://signpath.org) in November 2026 and was asked to apply again once it has wider public adoption. When signing is granted, signed releases will state: "Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)."
 
-Releases are not signed yet: the project is applying to SignPath Foundation, and signing starts with the first release built after approval. Releases up to and including 0.1.1 are unsigned. Every release, signed or not, lists SHA-256 hashes, and files built by GitHub Actions carry a [build provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations) you can check:
+Until then, every release lists SHA-256 hashes, and from 0.1.2 on every file is built by GitHub Actions and carries a [build provenance attestation](https://docs.github.com/actions/security-for-github-actions/using-artifact-attestations) you can check:
 
 ```powershell
 gh attestation verify DNS-Switcher-Setup-0.1.2.exe -R Devzinh/dns-switcher
