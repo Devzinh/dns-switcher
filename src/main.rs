@@ -1,6 +1,7 @@
 #![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
 
 mod service;
+mod netcfg;
 mod sys;
 mod tray;
 mod updater;
@@ -28,7 +29,7 @@ enum Mode {
 
 enum Msg {
     Status(String, bool), // text, ok?
-    Current(String, String), // adapter, DNS in use
+    Current(String, String, Vec<String>), // adapter, DNS in use, provider (DHCP) DNS
     TestResult(u64, usize, probe::Probe), // test generation, index, result
 }
 
@@ -42,6 +43,12 @@ struct App {
     custom1: String,
     custom2: String,
     use_custom: bool,
+    /// DNS servers the router/provider hands out by DHCP for this adapter.
+    provider: Vec<String>,
+    /// The provider's DNS is the selected choice (applying it = Automatic).
+    use_provider: bool,
+    /// The last test included the provider's DNS as its last entry.
+    tested_provider: bool,
     status: String,
     status_ok: bool,
     busy: bool,
@@ -87,6 +94,9 @@ impl App {
             custom1: String::new(),
             custom2: String::new(),
             use_custom: false,
+            provider: Vec::new(),
+            use_provider: false,
+            tested_provider: false,
             status: "Ready. Pick a DNS and press Apply.".into(),
             status_ok: true,
             busy: false,
@@ -126,7 +136,8 @@ impl App {
         let tx = self.tx.clone();
         thread::spawn(move || {
             let dns = sys::current_dns(&adapter);
-            let _ = tx.send(Msg::Current(adapter, dns));
+            let provider = sys::provider_dns(&adapter).iter().map(|ip| ip.to_string()).collect();
+            let _ = tx.send(Msg::Current(adapter, dns, provider));
         });
     }
 
@@ -156,6 +167,9 @@ impl App {
     }
 
     fn apply(&mut self, auto_flush: bool) {
+        if self.use_provider {
+            return self.restore();
+        }
         let (d1, d2) = self.chosen_dns();
         if d1.is_empty() {
             self.set_status("Enter a DNS address first.", false);
@@ -208,18 +222,29 @@ impl App {
     /// Probes every server of the visible list in parallel (QUICK in simple mode).
     fn start_test(&mut self, simple: bool) {
         let list: &[Provider] = if simple { QUICK } else { self.current_list() };
+        let mut servers: Vec<String> = list.iter().map(|p| p.dns1.to_string()).collect();
+        // Your provider's DNS (IPv4, from DHCP) is the baseline everything is
+        // compared with: it's often the closest resolver and the best for CDNs.
+        let with_provider = !self.ipv6 || simple;
         self.clear_results();
-        self.results = vec![None; list.len()];
+        self.tested_provider = false;
+        if with_provider {
+            if let Some(p) = self.provider.first() {
+                servers.push(p.clone());
+                self.tested_provider = true;
+            }
+        }
+        self.results = vec![None; servers.len()];
         self.tested_simple = simple;
         self.test_got = 0;
         self.best = None;
         self.testing = true;
-        self.set_status(&format!("Testing DNS servers… 0/{}", list.len()), true);
+        self.set_status(&format!("Testing DNS servers… 0/{}", servers.len()), true);
         // A small worker pool: probing every server at once floods home routers
         // and shows up as false packet loss.
-        let queue: Vec<(usize, String)> = list.iter().map(|p| p.dns1.to_string()).enumerate().collect();
+        let queue: Vec<(usize, String)> = servers.into_iter().enumerate().collect();
         let queue = std::sync::Arc::new(std::sync::Mutex::new(queue));
-        for _ in 0..PARALLEL_PROBES.min(list.len()) {
+        for _ in 0..PARALLEL_PROBES.min(self.results.len()) {
             let (tx, queue, gen) = (self.tx.clone(), queue.clone(), self.test_gen);
             thread::spawn(move || {
                 while let Some((i, server)) = queue.lock().ok().and_then(|mut q| q.pop()) {
@@ -254,6 +279,23 @@ impl App {
             return;
         };
         self.best = Some(i);
+        let r = self.results[i].as_ref().expect("best has a result");
+        let speed = |r: &probe::Probe| match r.cdn {
+            Some(c) => format!("{} ms lookup, {c} ms to sites", r.median().unwrap_or(0)),
+            None => format!("{} ms lookup", r.median().unwrap_or(0)),
+        };
+        if self.tested_provider && i == self.results.len() - 1 {
+            let msg = format!(
+                "Best: your provider's DNS ({}), {}. Keep it: press Apply to use automatic DNS.",
+                self.provider.join(", "),
+                speed(r)
+            );
+            self.use_provider = true;
+            self.use_custom = false;
+            return self.set_status(&msg, true);
+        }
+        let msg_speed = speed(r);
+        self.use_provider = false;
         let winner = &self.tested_list()[i];
         if self.tested_simple {
             self.use_custom = true;
@@ -264,12 +306,7 @@ impl App {
             self.use_custom = false;
         }
         let r = self.results[i].as_ref().expect("best has a result");
-        let mut msg = format!(
-            "Fastest: {} — {} ms median, {}% loss",
-            winner.name,
-            r.median().unwrap_or(0),
-            r.loss_pct()
-        );
+        let mut msg = format!("Best: {}, {}, {}% loss", winner.name, msg_speed, r.loss_pct());
         if let Some(site) = &r.site {
             msg.push_str(&format!(", answered by {site}"));
         }
@@ -291,9 +328,10 @@ impl App {
                     self.busy = false;
                     self.refresh_current();
                 }
-                Msg::Current(adapter, dns) => {
+                Msg::Current(adapter, dns, provider) => {
                     if adapter == self.adapter_name() {
                         self.current = dns;
+                        self.provider = provider;
                     }
                 }
                 Msg::TestResult(gen, i, r) => {
@@ -459,21 +497,19 @@ impl App {
             .auto_shrink([false, false])
             .show(ui, |ui| {
                 let shown = self.tested_simple;
+                if let Some(p1) = self.provider.first().cloned() {
+                    let i = QUICK.len();
+                    let metric = if shown && self.tested_provider { row_metric(self.results.get(i), self.best == Some(i), self.testing) } else { None };
+                    let p2 = self.provider.get(1).cloned().unwrap_or_default();
+                    if dns_row(ui, self.use_provider, "Your provider — automatic", &p1, &p2, metric.as_deref()) {
+                        self.use_provider = true;
+                        self.use_custom = false;
+                    }
+                    ui.add_space(6.0);
+                }
                 for (i, q) in QUICK.iter().enumerate() {
-                    let selected = self.use_custom && self.custom1 == q.dns1;
-                    let metric = if !shown {
-                        None
-                    } else {
-                        match self.results.get(i) {
-                            Some(Some(r)) => Some(match r.median() {
-                                Some(ms) if self.best == Some(i) => format!("{ms} ms  fastest"),
-                                Some(ms) => format!("{ms} ms"),
-                                None => "no reply".to_string(),
-                            }),
-                            Some(None) if self.testing => Some("testing…".to_string()),
-                            _ => None,
-                        }
-                    };
+                    let selected = !self.use_provider && self.use_custom && self.custom1 == q.dns1;
+                    let metric = if shown { row_metric(self.results.get(i), self.best == Some(i), self.testing) } else { None };
                     if dns_row(ui, selected, q.name, q.dns1, q.dns2, metric.as_deref()) {
                         pending = Some((q.dns1.to_string(), q.dns2.to_string()));
                     }
@@ -481,6 +517,7 @@ impl App {
                 }
             });
         if let Some((d1, d2)) = pending {
+            self.use_provider = false;
             self.use_custom = true;
             self.custom1 = d1;
             self.custom2 = d2;
@@ -557,7 +594,7 @@ impl App {
                 ui.set_max_width(ui.available_width() - 14.0);
                 egui::Grid::new("servers")
                     .striped(true)
-                    .num_columns(9)
+                    .num_columns(10)
                     .min_col_width(0.0)
                     .spacing([12.0, 6.0])
                     .show(ui, |ui| {
@@ -578,17 +615,40 @@ impl App {
                         ui.strong("Cold").on_hover_text(
                             "A random name the resolver has never seen, so it must ask the authoritative servers",
                         );
+                        ui.strong("CDN").on_hover_text(format!(
+                            "Time to connect to the servers this resolver picks for big CDNs ({}). A resolver that answers fast but sends you to another region or country shows a high number here. Ranking uses lookup time plus this.",
+                            probe::CDN_HOSTS.join(", ")
+                        ));
                         ui.strong("Site").on_hover_text(
                             "Which anycast location answered (CHAOS TXT id.server), when the resolver reports it",
                         );
                         ui.end_row();
+                        if !self.ipv6 && !self.provider.is_empty() {
+                            {
+                                let i = self.current_list().len();
+                                if ui.add_sized([22.0, 18.0], egui::RadioButton::new(self.use_provider, "")).clicked() {
+                                    self.use_provider = true;
+                                    self.use_custom = false;
+                                }
+                                let shown = !self.tested_simple && self.tested_provider;
+                                let mut name = egui::RichText::new("Your provider (automatic)");
+                                if shown && self.best == Some(i) {
+                                    name = name.color(GOOD).strong();
+                                }
+                                ui.label(name).on_hover_text("The DNS your router or internet provider hands out. Choosing it switches the adapter back to automatic.");
+                                ui.label(egui::RichText::new(self.provider.join(" / ")).monospace().size(12.0));
+                                let r = if shown { self.results.get(i).and_then(|r| r.as_ref()) } else { None };
+                                probe_cells(ui, r, self.testing && shown);
+                                ui.end_row();
+                            }
+                        }
                         let best = self.best;
                         let testing = self.testing;
                         let shown = !self.tested_simple;
                         let list = self.current_list();
                         let mut pick: Option<usize> = None;
                         for (i, p) in list.iter().enumerate() {
-                            let sel = !self.use_custom && self.server_idx == i;
+                            let sel = !self.use_provider && !self.use_custom && self.server_idx == i;
                             if ui.add_sized([22.0, 18.0], egui::RadioButton::new(sel, "")).clicked() {
                                 pick = Some(i);
                             }
@@ -607,36 +667,13 @@ impl App {
                                 .size(12.0),
                             );
                             let result = if shown { self.results.get(i).and_then(|r| r.as_ref()) } else { None };
-                            match result {
-                                Some(r) => {
-                                    ms_cell(ui, r.median());
-                                    ms_cell(ui, r.p95());
-                                    ms_cell(ui, r.jitter());
-                                    let loss = r.loss_pct();
-                                    let text = egui::RichText::new(format!("{loss}%")).monospace();
-                                    ui.label(if loss > 20 { text.color(BAD) } else { text });
-                                    ms_cell(ui, r.cold);
-                                    match &r.site {
-                                        Some(s) => {
-                                            let short: String = s.chars().take(22).collect();
-                                            let label = if short.len() < s.len() { format!("{short}…") } else { short };
-                                            ui.label(egui::RichText::new(label).monospace().size(12.0)).on_hover_text(s)
-                                        }
-                                        None => ui.weak("–"),
-                                    };
-                                }
-                                None => {
-                                    let mark = if testing && shown { "…" } else { "–" };
-                                    for _ in 0..6 {
-                                        ui.weak(mark);
-                                    }
-                                }
-                            };
+                            probe_cells(ui, result, testing && shown);
                             ui.end_row();
                         }
                         if let Some(i) = pick {
                             self.server_idx = i;
                             self.use_custom = false;
+                            self.use_provider = false;
                         }
                     });
             });
@@ -659,6 +696,68 @@ impl App {
                 self.restore();
             }
         });
+    }
+}
+
+/// The seven measurement cells of an advanced-mode row.
+fn probe_cells(ui: &mut egui::Ui, r: Option<&probe::Probe>, pending: bool) {
+    let Some(r) = r else {
+        let mark = if pending { "…" } else { "–" };
+        for _ in 0..7 {
+            ui.weak(mark);
+        }
+        return;
+    };
+    ms_cell(ui, r.median());
+    ms_cell(ui, r.p95());
+    ms_cell(ui, r.jitter());
+    let loss = r.loss_pct();
+    let text = egui::RichText::new(format!("{loss}%")).monospace();
+    ui.label(if loss > 20 { text.color(BAD) } else { text });
+    ms_cell(ui, r.cold);
+    let detail: Vec<String> = r
+        .cdn_detail
+        .iter()
+        .map(|(h, ip, ms)| format!("{h} → {ip}: {}", ms.map(|m| format!("{m} ms")).unwrap_or("no connection".into())))
+        .collect();
+    let cdn = match r.cdn {
+        Some(v) => {
+            let t = egui::RichText::new(format!("{v} ms")).monospace();
+            ui.label(if v >= 80 { t.color(BAD) } else { t })
+        }
+        None => ui.weak("–"),
+    };
+    if !detail.is_empty() {
+        cdn.on_hover_text(detail.join("\n"));
+    }
+    match &r.site {
+        Some(s) => {
+            let short: String = s.chars().take(22).collect();
+            let label = if short.len() < s.len() { format!("{short}…") } else { short };
+            ui.label(egui::RichText::new(label).monospace().size(12.0)).on_hover_text(s)
+        }
+        None => ui.weak("–"),
+    };
+}
+
+/// Right-hand text of a simple-mode row: lookup time and time to sites.
+fn row_metric(r: Option<&Option<probe::Probe>>, best: bool, testing: bool) -> Option<String> {
+    match r {
+        Some(Some(r)) => Some(match (r.median(), r.cdn) {
+            (Some(ms), cdn) => {
+                let mut t = format!("{ms} ms");
+                if let Some(c) = cdn {
+                    t.push_str(&format!(" · sites {c} ms"));
+                }
+                if best {
+                    t.push_str("  best");
+                }
+                t
+            }
+            (None, _) => "no reply".to_string(),
+        }),
+        Some(None) if testing => Some("testing…".to_string()),
+        _ => None,
     }
 }
 
@@ -698,7 +797,7 @@ fn dns_row(ui: &mut egui::Ui, selected: bool, name: &str, dns1: &str, dns2: &str
     let ips = format!("{}  •  {}", dns1, if dns2.is_empty() { "—" } else { dns2 });
     p.text(Pos2::new(x, rect.bottom() - 13.0), Align2::LEFT_CENTER, ips, FontId::monospace(12.5), weak);
     if let Some(m) = metric {
-        let col = if selected { text_col } else if m.ends_with("fastest") { GOOD } else { weak };
+        let col = if selected { text_col } else if m.ends_with("best") { GOOD } else { weak };
         p.text(Pos2::new(rect.right() - 12.0, rect.center().y), Align2::RIGHT_CENTER, m, FontId::monospace(13.0), col);
     }
     resp.clicked()

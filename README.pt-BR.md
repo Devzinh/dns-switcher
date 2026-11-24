@@ -34,7 +34,7 @@ Acima está o pacote exato que o botão **Find fastest** envia. O mesmo pacote v
 
 **Modo avançado.** 47 resolvedores em três grupos: uso geral, bloqueio de malware e filtro para família. Também tem IPv6, servidor personalizado e escolha do adaptador de rede.
 
-**Find fastest** mede todos os servidores da tela e seleciona o mais rápido. **Flush DNS** limpa o cache do Windows, então a troca vale na hora. A janela também mostra qual DNS o adaptador está usando agora.
+**Find fastest** mede todos os servidores da tela, **inclusive o DNS do seu próprio provedor** (o que o roteador entrega), e seleciona o melhor. "Melhor" é o tempo para resolver um nome somado ao tempo para chegar ao servidor para onde aquele DNS te manda, então um resolvedor que responde rápido mas aponta para outro país não vence. Quando o DNS do provedor é o melhor, o app recomenda mantê-lo. **Flush DNS** limpa o cache do Windows, então a troca vale na hora. A janela também mostra qual DNS o adaptador está usando agora.
 
 <br clear="right">
 
@@ -49,6 +49,7 @@ No modo avançado cada servidor ganha uma linha de medições:
 | Jitter | Quanto o tempo varia, em média, de uma consulta para a seguinte |
 | Loss | Consultas sem resposta em até 500 ms |
 | Cold | Uma consulta a um nome aleatório que o resolvedor nunca viu, então ele precisa perguntar aos servidores autoritativos. É o que você sente ao abrir um site pela primeira vez |
+| CDN | Tempo para conectar nos servidores para onde esse resolvedor te manda em três grandes CDNs (Akamai, Microsoft, Amazon), mediana dos três. Medindo do Brasil, resolvedores na Europa mandaram os três para servidores a cerca de 200 ms, enquanto os próximos ficaram entre 4 e 12 ms. Aparece em vermelho a partir de 80 ms |
 | Site | Qual unidade anycast respondeu, quando o resolvedor informa (por exemplo, `gru14` é a Cloudflare em São Paulo) |
 
 ## Como funciona
@@ -58,9 +59,9 @@ O app só usa ferramentas que já vêm no Windows, mais um socket UDP.
 | Etapa | O que acontece |
 |---|---|
 | Listar adaptadores | Lê `netsh interface ipv4 show interfaces` pelas colunas, então funciona com o Windows em qualquer idioma. Ignora o loopback. |
-| Medir | Monta consultas DNS à mão (RFC 1035) e envia por UDP à porta 53: 5 consultas a `www.google.com` com 80 ms de intervalo, uma consulta a um nome aleatório dentro de `google.com` e uma consulta CHAOS TXT `id.server`. Uma resposta só vale se trouxer o mesmo id de transação e a marca de resposta. Cada consulta tem limite de 500 ms, e 6 servidores são medidos ao mesmo tempo. |
-| Classificar | Servidores com até 20% de perda vêm primeiro, ordenados pela mediana e depois pelo p95. |
-| Aplicar | `netsh interface ipv4 set dnsservers … static` para o servidor primário e `add dnsservers … index=2` para o secundário. Com IPv6 é o mesmo comando, na família `ipv6`. |
+| Medir | Monta consultas DNS à mão (RFC 1035) e envia por UDP à porta 53: 5 consultas a `www.google.com` com 80 ms de intervalo, uma consulta a um nome aleatório dentro de `google.com` uma consulta CHAOS TXT `id.server` e consultas A de `www.akamai.com`, `www.microsoft.com` e `www.amazon.com`, seguidas de uma conexão TCP na porta 443 de cada endereço devolvido. Uma resposta só vale se trouxer o mesmo id de transação e a marca de resposta. Cada consulta tem limite de 500 ms, e 6 servidores são medidos ao mesmo tempo. |
+| Classificar | Servidores com até 20% de perda vêm primeiro, ordenados pela mediana do tempo de consulta somada ao tempo de conexão na CDN, e depois pelo p95. O DNS do seu provedor (via DHCP) também é medido. |
+| Aplicar | `netsh interface ipv4 set dnsservers … static` para o servidor primário e `add dnsservers … index=2` para o secundário (família `ipv6` para IPv6). Tudo ou nada: os servidores anteriores são lidos do registro antes, o resultado é conferido depois, e se qualquer passo falhar o adaptador volta exatamente como estava. |
 | Restaurar | Volta IPv4 e IPv6 para DHCP. |
 | Limpar cache | `ipconfig /flushdns`. |
 
@@ -194,6 +195,18 @@ Hoje, **Find fastest** cronometra uma lista fixa. A ideia é que ele passe a res
 - [ ] Linha de comando para scripts: `dns_switcher --apply cloudflare --adapter "Wi-Fi"`
 
 ## Perguntas frequentes
+
+<details>
+<summary>O DNS do meu provedor não costuma ser o melhor?</summary>
+<br>
+Muitas vezes, sim: ele fica perto de você e as CDNs sabem onde estão os usuários dele. Por isso o **Find fastest** mede ele junto com os resolvedores públicos e recomenda mantê-lo quando ele vence. Trocar vale a pena quando ele é lento ou instável, ou quando você quer filtro de malware ou para família.
+</details>
+
+<details>
+<summary>Os nomes da minha rede local continuam funcionando?</summary>
+<br>
+Nomes que só o seu roteador conhece (por exemplo `impressora.lan` ou `nas.home`) são resolvidos pelo DNS do roteador. Um resolvedor público não os conhece, então eles podem parar de funcionar depois da troca. Quando a sua rede anuncia um domínio local, o app avisa depois de aplicar. **Automatic** volta tudo ao normal. Se você depende de nomes locais, o melhor é trocar o DNS no roteador, que continua respondendo pelos nomes locais.
+</details>
 
 <details>
 <summary>Trocar o DNS aumenta a velocidade de download?</summary>

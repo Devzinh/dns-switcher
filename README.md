@@ -34,7 +34,7 @@ Above is the exact packet the **Find fastest** button sends. The same packet goe
 
 **Advanced mode.** 47 resolvers in three groups: general use, malware blocking and family filtering. It also has IPv6, a custom server and network adapter selection.
 
-**Find fastest** measures every server on screen and selects the fastest. **Flush DNS** clears the Windows cache, so the change takes effect right away. The window also shows which DNS your adapter is using right now.
+**Find fastest** measures every server on screen, **including your provider's own DNS** (the one your router hands out), and selects the best. "Best" means the time to resolve a name plus the time to reach the server that DNS sends you to, so a resolver that answers fast but points you to another country doesn't win. When your provider's DNS is the best, the app tells you to keep it. **Flush DNS** clears the Windows cache, so the change takes effect right away. The window also shows which DNS your adapter is using right now.
 
 <br clear="right">
 
@@ -49,6 +49,7 @@ In advanced mode each server gets its own row of measurements:
 | Jitter | Average change between one lookup and the next |
 | Loss | Lookups with no reply within 500 ms |
 | Cold | One lookup of a random name the resolver has never seen, so it has to ask the authoritative servers. This is what you feel on sites you visit for the first time |
+| CDN | Time to connect to the servers this resolver sends you to for three big CDNs (Akamai, Microsoft, Amazon), median of the three. Measured from Brazil, resolvers in Europe sent all three to servers about 200 ms away while nearby ones got 4–12 ms. Shown in red from 80 ms |
 | Site | Which anycast location answered, when the resolver reports it (for example `gru14` is Cloudflare in São Paulo) |
 
 ## How it works
@@ -58,9 +59,9 @@ The app only uses tools that ship with Windows, plus a UDP socket.
 | Step | What happens |
 |---|---|
 | List adapters | Reads `netsh interface ipv4 show interfaces` by column, so it works with Windows in any language. Skips loopback. |
-| Measure | Builds DNS queries by hand (RFC 1035) and sends them over UDP to port 53: 5 lookups of `www.google.com` 80 ms apart, one lookup of a random name under `google.com`, and a CHAOS TXT `id.server` query. A reply only counts if it carries the same transaction id and the response flag. Each lookup has a 500 ms limit, and 6 servers are measured at a time. |
-| Rank | Servers with at most 20% loss come first, ordered by median, then by p95. |
-| Apply | `netsh interface ipv4 set dnsservers … static` for the primary server and `add dnsservers … index=2` for the secondary. For IPv6 it's the same command in the `ipv6` family. |
+| Measure | Builds DNS queries by hand (RFC 1035) and sends them over UDP to port 53: 5 lookups of `www.google.com` 80 ms apart, one lookup of a random name under `google.com`, a CHAOS TXT `id.server` query, and A lookups of `www.akamai.com`, `www.microsoft.com` and `www.amazon.com` followed by a TCP connection to port 443 of each returned address. A reply only counts if it carries the same transaction id and the response flag. Each lookup has a 500 ms limit, and 6 servers are measured at a time. |
+| Rank | Servers with at most 20% loss come first, ordered by median lookup time plus CDN connect time, then by p95. Your provider's DNS (from DHCP) is measured too. |
+| Apply | `netsh interface ipv4 set dnsservers … static` for the primary server and `add dnsservers … index=2` for the secondary (`ipv6` family for IPv6). All or nothing: the previous servers are read from the registry first, the result is read back afterwards, and if any step fails the adapter is put back exactly as it was. |
 | Restore | Switches IPv4 and IPv6 back to DHCP. |
 | Clear cache | `ipconfig /flushdns`. |
 
@@ -194,6 +195,18 @@ Today, **Find fastest** times a fixed list. The goal is for it to answer the que
 - [ ] Command line for scripts: `dns_switcher --apply cloudflare --adapter "Wi-Fi"`
 
 ## FAQ
+
+<details>
+<summary>Isn't my provider's DNS usually the best?</summary>
+<br>
+Often, yes: it's close to you and CDNs know where its users are. That's why **Find fastest** measures it alongside the public resolvers and recommends keeping it when it wins. Switching makes sense when it's slow or unreliable, or when you want malware or family filtering.
+</details>
+
+<details>
+<summary>Will names on my local network still work?</summary>
+<br>
+Names that only your router knows (for example `printer.lan` or `nas.home`) resolve through your router's DNS. A public resolver doesn't know them, so they can stop working after you switch. When your network announces a local domain, the app warns you after applying. **Automatic** brings everything back. If you rely on local names, a better setup is to change the DNS in the router instead, so it keeps answering for the local ones.
+</details>
 
 <details>
 <summary>Does changing DNS increase download speed?</summary>

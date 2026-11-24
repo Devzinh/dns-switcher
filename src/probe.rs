@@ -6,16 +6,32 @@
 //! - one cold lookup: a random, never-cached name, so the resolver has to
 //!   recurse to the authoritative servers;
 //! - the anycast site that answered, from a CHAOS TXT `id.server` query
-//!   (supported by Cloudflare, Quad9 and others; `None` when unsupported).
+//!   (supported by Cloudflare, Quad9 and others; `None` when unsupported);
+//! - answer quality: the resolver is asked for a CDN hostname whose answer
+//!   depends on where the CDN thinks you are, and the time to open a TCP
+//!   connection to the server it returns is measured. A resolver that answers
+//!   fast but sends you to a far-away server shows up here.
 
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
-use std::net::{IpAddr, SocketAddr, UdpSocket};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, UdpSocket};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 pub const WARM_DOMAIN: &str = "www.google.com";
 pub const COLD_PARENT: &str = "google.com";
+/// Hosts whose answer depends on where the CDN thinks the resolver (or the
+/// client subnet it forwards) is: Akamai, Azure Front Door/Akamai and
+/// CloudFront. Measured from Brazil, resolvers in Europe sent all three to
+/// servers ~200 ms away while nearby resolvers got 4–12 ms. Anycast-only
+/// sites (Google, Cloudflare, Netflix) answer the same everywhere, so they
+/// can't tell resolvers apart and aren't used.
+pub const CDN_HOSTS: [&str; 3] = ["www.akamai.com", "www.microsoft.com", "www.amazon.com"];
+const CDN_PORT: u16 = 443;
+const CDN_CONNECT_MS: u64 = 1000;
+/// Added to the score of servers whose CDN answer couldn't be measured when
+/// others could, so they sort after them instead of looking fast.
+const CDN_MISSING_PENALTY: u32 = 1000;
 pub const SAMPLES: usize = 5;
 pub const TIMEOUT_MS: u64 = 500;
 const GAP_MS: u64 = 80;
@@ -34,6 +50,10 @@ pub struct Probe {
     pub cold: Option<u32>,
     /// Anycast site identifier reported by the resolver, if any.
     pub site: Option<String>,
+    /// Median TCP connect time (ms) to the CDN servers this resolver picked.
+    pub cdn: Option<u32>,
+    /// The CDN servers this resolver returned, with connect times.
+    pub cdn_detail: Vec<(&'static str, Ipv4Addr, Option<u32>)>,
 }
 
 impl Probe {
@@ -81,19 +101,24 @@ impl Probe {
         (lost * 100 / self.samples.len()) as u32
     }
 
-    /// Ranking key: reliable servers (≤ 20% loss) first, then by median, then p95.
-    pub fn rank_key(&self) -> Option<(bool, u32, u32)> {
+    /// Ranking key: reliable servers (≤ 20% loss) first, then by score
+    /// (median lookup time, plus the CDN connect time when `use_cdn`), then p95.
+    pub fn rank_key(&self, use_cdn: bool) -> Option<(bool, u32, u32)> {
         let m = self.median()?;
-        Some((self.loss_pct() > 20, m, self.p95().unwrap_or(m)))
+        let score = if use_cdn { m + self.cdn.unwrap_or(CDN_MISSING_PENALTY) } else { m };
+        Some((self.loss_pct() > 20, score, self.p95().unwrap_or(m)))
     }
 }
 
-/// Index of the best probe, using [`Probe::rank_key`].
+/// Index of the best probe. When at least one CDN measurement worked, the
+/// ranking includes it: what matters is how fast you reach the content, not
+/// only how fast the name resolves.
 pub fn best(probes: &[Option<Probe>]) -> Option<usize> {
+    let use_cdn = probes.iter().flatten().any(|p| p.cdn.is_some());
     probes
         .iter()
         .enumerate()
-        .filter_map(|(i, p)| p.as_ref()?.rank_key().map(|k| (k, i)))
+        .filter_map(|(i, p)| p.as_ref()?.rank_key(use_cdn).map(|k| (k, i)))
         .min()
         .map(|(_, i)| i)
 }
@@ -116,7 +141,32 @@ pub fn probe(server: &str) -> Probe {
     let site = exchange(ip, "id.server", TYPE_TXT, CLASS_CH, timeout)
         .and_then(|(_, reply)| first_txt(&reply))
         .filter(|s| !s.trim().is_empty());
-    Probe { samples, cold, site }
+    let cdn_detail: Vec<_> = CDN_HOSTS
+        .iter()
+        .filter_map(|h| resolve_a(ip, h).map(|a| (*h, a, connect_ms(a))))
+        .collect();
+    let mut times: Vec<u32> = cdn_detail.iter().filter_map(|(_, _, ms)| *ms).collect();
+    times.sort_unstable();
+    let cdn = times.get(times.len() / 2).copied().filter(|_| !times.is_empty());
+    Probe { samples, cold, site, cdn, cdn_detail }
+}
+
+/// IPv4 address `server` returns for `host`, or `None`.
+pub fn resolve_a(server: IpAddr, host: &str) -> Option<Ipv4Addr> {
+    exchange(server, host, TYPE_A, CLASS_IN, Duration::from_millis(TIMEOUT_MS)).and_then(|(_, r)| first_a(&r))
+}
+
+/// Best of two TCP handshakes to the CDN server, in ms.
+fn connect_ms(ip: Ipv4Addr) -> Option<u32> {
+    let addr = SocketAddr::new(IpAddr::V4(ip), CDN_PORT);
+    (0..2)
+        .filter_map(|_| {
+            let start = Instant::now();
+            TcpStream::connect_timeout(&addr, Duration::from_millis(CDN_CONNECT_MS))
+                .ok()
+                .map(|_| start.elapsed().as_millis() as u32)
+        })
+        .min()
 }
 
 /// Sends one query and waits for the matching reply. Returns (ms, reply bytes).
@@ -163,6 +213,38 @@ pub fn build_query(id: u16, name: &str, qtype: u16, qclass: u16) -> Option<Vec<u
 /// A response (QR=1) carrying our transaction id.
 fn is_reply_to(msg: &[u8], id: u16) -> bool {
     msg.len() >= 12 && u16::from_be_bytes([msg[0], msg[1]]) == id && msg[2] & 0x80 != 0
+}
+
+/// The answer section's records as (type, rdata), skipping the question.
+fn answers(msg: &[u8]) -> Option<Vec<(u16, &[u8])>> {
+    if msg.len() < 12 {
+        return None;
+    }
+    let qd = u16::from_be_bytes([msg[4], msg[5]]) as usize;
+    let an = u16::from_be_bytes([msg[6], msg[7]]) as usize;
+    let mut pos = 12;
+    for _ in 0..qd {
+        pos = skip_name(msg, pos)? + 4;
+    }
+    let mut out = Vec::with_capacity(an);
+    for _ in 0..an {
+        pos = skip_name(msg, pos)?;
+        let head = msg.get(pos..pos + 10)?;
+        let rtype = u16::from_be_bytes([head[0], head[1]]);
+        let rdlen = u16::from_be_bytes([head[8], head[9]]) as usize;
+        pos += 10;
+        out.push((rtype, msg.get(pos..pos + rdlen)?));
+        pos += rdlen;
+    }
+    Some(out)
+}
+
+/// First IPv4 address in the answer section (after any CNAME chain).
+pub fn first_a(msg: &[u8]) -> Option<Ipv4Addr> {
+    answers(msg)?
+        .into_iter()
+        .find(|(t, d)| *t == TYPE_A && d.len() == 4)
+        .map(|(_, d)| Ipv4Addr::new(d[0], d[1], d[2], d[3]))
 }
 
 /// Text of the first TXT record in the answer section, strings concatenated.
@@ -280,6 +362,17 @@ mod tests {
     }
 
     #[test]
+    fn parses_a_after_cname() {
+        let mut m = vec![0, 1, 0x81, 0x80, 0, 1, 0, 2, 0, 0, 0, 0];
+        m.extend(build_query(0, "www.akamai.com", TYPE_A, CLASS_IN).unwrap()[12..].iter());
+        // CNAME www.akamai.com -> x (rdata: 1 'x' 0)
+        m.extend_from_slice(&[0xC0, 0x0C, 0, 5, 0, 1, 0, 0, 0, 60, 0, 3, 1, b'x', 0]);
+        m.extend_from_slice(&[0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 23, 45, 67, 89]);
+        assert_eq!(first_a(&m), Some(Ipv4Addr::new(23, 45, 67, 89)));
+        assert_eq!(first_a(&m[..m.len() - 2]), None);
+    }
+
+    #[test]
     fn txt_parser_survives_truncation() {
         let mut m = vec![0, 0, 0x84, 0, 0, 1, 0, 1, 0, 0, 0, 0];
         m.extend(build_query(0, "id.server", TYPE_TXT, CLASS_CH).unwrap()[12..].iter());
@@ -296,6 +389,22 @@ mod tests {
         assert_eq!(x.loss_pct(), 20);
         assert_eq!(p(&[None, None]).median(), None);
         assert_eq!(p(&[None, None]).loss_pct(), 100);
+    }
+
+    #[test]
+    fn ranking_counts_cdn_distance() {
+        // Fast resolver that sends you far away loses to a slightly slower one
+        // that sends you to a nearby server.
+        let mut fast_far = p(&[Some(5); 5]);
+        fast_far.cdn = Some(180);
+        let mut near = p(&[Some(12); 5]);
+        near.cdn = Some(8);
+        let mut unmeasured = p(&[Some(3); 5]);
+        unmeasured.cdn = None;
+        assert_eq!(best(&[Some(fast_far.clone()), Some(near), Some(unmeasured)]), Some(1));
+        // Without any CDN data, plain lookup time decides.
+        fast_far.cdn = None;
+        assert_eq!(best(&[Some(p(&[Some(9); 5])), Some(fast_far)]), Some(1));
     }
 
     #[test]

@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.3 — 2026-11-24
+
+Improvements from feedback by the r/brdev community.
+
+### Measurement
+
+- **Your provider's DNS is measured too.** The DNS your router hands out (from DHCP) is now tested alongside the public resolvers. When it wins, the app recommends keeping it (automatic) instead of switching.
+- **Answer quality, not only speed.** New **CDN** column: each resolver is asked for three CDN hostnames whose answer depends on where the CDN thinks you are (`www.akamai.com`, `www.microsoft.com`, `www.amazon.com`), and the time to connect to the returned servers is measured. A resolver that answers fast but sends you to another region or country no longer wins: ranking uses lookup time plus this connect time.
+
+### Reliability
+
+- **Applying DNS is all or nothing.** Primary and secondary are two separate `netsh` steps; if the second failed, the adapter used to be left half-configured. Now the previous servers are read first, the result is read back afterwards, and on any failure the adapter is restored exactly as it was.
+- The same address as primary and secondary is treated as "no secondary" instead of failing.
+- The current DNS is read from the registry instead of `netsh` text, so it no longer depends on the Windows display language.
+
+### Local networks
+
+- When your network announces a local domain (for example `lan` or `home`), applying a public DNS now warns that local names may stop resolving, and how to undo it.
+
 ## 0.1.2 — 2026-11-23
 
 ### Automatic updates

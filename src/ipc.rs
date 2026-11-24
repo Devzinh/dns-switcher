@@ -40,7 +40,9 @@ impl Request {
         let dns2 = match dns2.trim() {
             "" => None,
             s => Some(parse_ip(s, ipv6)?),
-        };
+        }
+        // The same address twice is a typo; Windows would reject the second.
+        .filter(|d| *d != dns1);
         Ok(Request::Apply { adapter, ipv6, dns1, dns2 })
     }
 
@@ -106,6 +108,15 @@ pub fn decode_reply(line: &str) -> Result<String, String> {
     }
 }
 
+/// Parses a DNS server list separated by commas, semicolons and/or spaces
+/// (the registry uses both styles), keeping one address family.
+pub fn parse_server_list(list: &str, ipv6: bool) -> Vec<IpAddr> {
+    list.split([',', ' ', ';'])
+        .filter_map(|s| s.trim().parse::<IpAddr>().ok())
+        .filter(|ip| ip.is_ipv6() == ipv6)
+        .collect()
+}
+
 fn parse_ip(s: &str, ipv6: bool) -> Result<IpAddr, String> {
     let ip: IpAddr = s.trim().parse().map_err(|_| format!("{s:?} is not an IP address"))?;
     if ip.is_ipv6() != ipv6 {
@@ -163,6 +174,12 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_secondary_is_dropped() {
+        let r = Request::apply("Ethernet", false, "1.1.1.1", "1.1.1.1").unwrap();
+        assert_eq!(r, Request::Apply { adapter: "Ethernet".into(), ipv6: false, dns1: "1.1.1.1".parse().unwrap(), dns2: None });
+    }
+
+    #[test]
     fn rejects_bad_requests() {
         assert!(Request::decode("APPLY\tEthernet\t5\t1.1.1.1\t").is_err());
         assert!(Request::decode("RESTORE\tbad\"name").is_err());
@@ -170,6 +187,16 @@ mod tests {
         assert!(Request::decode("RUN\tcmd.exe").is_err());
         assert!(Request::decode("AUTOUPDATE\tyes").is_err());
         assert!(Request::decode(&"A".repeat(MAX_LINE + 1)).is_err());
+    }
+
+    #[test]
+    fn server_lists() {
+        assert_eq!(parse_server_list("1.1.1.1,1.0.0.1", false).len(), 2);
+        assert_eq!(parse_server_list("192.168.1.1 8.8.8.8", false).len(), 2);
+        assert_eq!(parse_server_list("2606:4700:4700::1111,2606:4700:4700::1001", true).len(), 2);
+        assert!(parse_server_list("2606:4700:4700::1111", false).is_empty());
+        assert!(parse_server_list("", false).is_empty());
+        assert!(parse_server_list("garbage, ,", false).is_empty());
     }
 
     #[test]
