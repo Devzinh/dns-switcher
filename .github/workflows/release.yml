@@ -153,6 +153,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Re-running for an existing release (for example after moving its tag)
+          # must not create a second, untagged draft. The files stay attached to
+          # this run as an artifact for a maintainer to upload by hand if needed.
+          gh release view $env:GITHUB_REF_NAME --json tagName 2>$null | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Output "::notice::Release $env:GITHUB_REF_NAME already exists; not creating a draft. Files are in this run's artifact."
+            exit 0
+          }
           gh release create $env:GITHUB_REF_NAME dist\* --draft --verify-tag `
             --title "DNS Switcher ${{ steps.version.outputs.version }}" `
             --notes "Built by GitHub Actions from $env:GITHUB_SHA. Signed: $env:SIGN. Hashes are in SHA256SUMS.txt."
