@@ -1,14 +1,3 @@
-//! Release signing for the self-updater.
-//!
-//!   cargo run --example update_sign -- keygen <private-key-file>
-//!       Creates a new Ed25519 key. Writes the private key (hex) to the file
-//!       and prints the public key, which goes into update-key.pub.
-//!   cargo run --example update_sign -- sign <SHA256SUMS.txt>
-//!       Signs the file with the key in the UPDATE_SIGNING_KEY environment
-//!       variable (hex) and writes <file>.sig. Used by the release workflow.
-//!   cargo run --example update_sign -- public
-//!       Prints the public key for UPDATE_SIGNING_KEY.
-
 use ed25519_dalek::{Signer, SigningKey};
 
 fn hex(b: &[u8]) -> String {

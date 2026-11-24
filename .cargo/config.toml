@@ -1,4 +1,3 @@
-# Link the C runtime statically so dns_switcher.exe runs on Windows installs
-# without the Visual C++ Redistributable (winget's clean test machines, fresh PCs).
+# Static CRT: runs without the Visual C++ Redistributable.
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "target-feature=+crt-static"]

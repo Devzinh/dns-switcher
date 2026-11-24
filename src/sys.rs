@@ -1,17 +1,11 @@
-//! System glue: adapters, applying DNS, restoring DHCP and flushing the cache.
-//!
-//! Commands are started directly from System32 by absolute path, never through
-//! a shell, and adapters are addressed by interface index. This code also runs
-//! inside the LocalSystem service, so no request field may reach a command line
-//! other than as a validated IP address or a number.
-
 use dns_switcher::ipc::Request;
 use std::net::IpAddr;
 
 #[cfg(windows)]
-const NO_WINDOW: u32 = 0x0800_0000; // CREATE_NO_WINDOW
+const NO_WINDOW: u32 = 0x0800_0000;
 
 #[cfg(windows)]
+// Absolute paths and no shell: this also runs as LocalSystem inside the service.
 fn system32(exe: &str) -> std::path::PathBuf {
     let root = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
     std::path::Path::new(&root).join("System32").join(exe)
@@ -46,9 +40,6 @@ pub struct Adapter {
     pub name: String,
 }
 
-/// Network interfaces except loopback, from `netsh interface ipv4 show interfaces`.
-/// Columns are Idx, Met, MTU, State, Name; parsing by position keeps it
-/// independent of the Windows display language.
 pub fn adapter_list() -> Vec<Adapter> {
     let Ok(text) = run("netsh.exe", &["interface", "ipv4", "show", "interfaces"]) else {
         return Vec::new();
@@ -83,8 +74,6 @@ fn index_of(adapter: &str) -> Result<u32, String> {
         .ok_or_else(|| format!("No network adapter named \"{adapter}\"."))
 }
 
-/// DNS servers your router or provider handed out by DHCP for this adapter,
-/// whether or not they're in use right now.
 pub fn provider_dns(adapter: &str) -> Vec<IpAddr> {
     index_of(adapter)
         .ok()
@@ -93,8 +82,6 @@ pub fn provider_dns(adapter: &str) -> Vec<IpAddr> {
         .unwrap_or_default()
 }
 
-/// Runs a request with the current process's rights. Used by the service, and
-/// by the app itself when it already runs as administrator.
 pub fn execute(req: &Request) -> Result<String, String> {
     match req {
         Request::Ping => Ok("pong".into()),
@@ -128,8 +115,6 @@ pub fn execute(req: &Request) -> Result<String, String> {
     }
 }
 
-/// Applies the servers, reads the result back, and on any failure puts the
-/// adapter back exactly as it was, so it's never left half-configured.
 fn apply_all_or_nothing(idx: u32, guid: Option<&str>, ipv6: bool, want: &[IpAddr]) -> Result<(), String> {
     let before = guid.map(|g| crate::netcfg::static_servers(g, ipv6));
     let result = set_servers(idx, ipv6, want).and_then(|()| match guid {
@@ -162,7 +147,6 @@ fn list(servers: &[IpAddr]) -> String {
     }
 }
 
-/// Sets the adapter's static servers in order, or automatic (DHCP) when empty.
 fn set_servers(idx: u32, ipv6: bool, servers: &[IpAddr]) -> Result<(), String> {
     let family = if ipv6 { "ipv6" } else { "ipv4" };
     let idx = idx.to_string();
@@ -178,7 +162,6 @@ fn set_servers(idx: u32, ipv6: bool, servers: &[IpAddr]) -> Result<(), String> {
     Ok(())
 }
 
-/// DNS servers in use on an adapter, as a short human string.
 pub fn current_dns(adapter: &str) -> String {
     let Some(guid) = index_of(adapter).ok().and_then(crate::netcfg::interface_guid) else {
         return "Unknown".into();
@@ -193,7 +176,6 @@ pub fn current_dns(adapter: &str) -> String {
     }
 }
 
-/// True when this process has an elevated (administrator) token.
 #[cfg(windows)]
 pub fn is_elevated() -> bool {
     use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};

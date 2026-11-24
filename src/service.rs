@@ -1,12 +1,3 @@
-//! The DNS Switcher Windows service (`dns_switcher.exe --service`).
-//!
-//! Installed by the setup program, runs as LocalSystem and does the only
-//! privileged work in the app: applying DNS, restoring DHCP and flushing the
-//! cache. It listens on a local named pipe whose security descriptor allows
-//! SYSTEM and Administrators full access and signed-in (interactive) users read
-//! and write. Remote clients are rejected. Each request is parsed and validated
-//! by `ipc::Request::decode` before anything runs.
-
 use crate::sys;
 use dns_switcher::ipc::{self, Request};
 use std::ffi::OsString;
@@ -37,7 +28,6 @@ fn report(state: ServiceState, accept: ServiceControlAccept) {
     }
 }
 
-/// Entry point for `--service`. Blocks until the service stops.
 pub fn run() -> Result<(), String> {
     service_dispatcher::start(ipc::SERVICE_NAME, ffi_service_main).map_err(|e| {
         format!("{e}. This mode is started by Windows; install DNS Switcher with its setup program.")
@@ -47,8 +37,7 @@ pub fn run() -> Result<(), String> {
 fn service_main(_args: Vec<OsString>) {
     let handler = |control| match control {
         ServiceControl::Stop | ServiceControl::Shutdown => {
-            // The pipe loop blocks in ConnectNamedPipe; ending the process is the
-            // simplest clean stop, after telling the SCM we're done.
+            // The pipe loop blocks in ConnectNamedPipe, so stop by exiting after reporting Stopped.
             std::thread::spawn(|| {
                 report(ServiceState::Stopped, ServiceControlAccept::empty());
                 std::process::exit(0);
@@ -75,7 +64,6 @@ fn serve_forever() {
     }
 }
 
-/// One request, one reply, then the connection closes.
 fn handle(pipe: std::fs::File) {
     let mut reader = BufReader::new(pipe.try_clone().expect("pipe handle"));
     let mut line = String::new();
@@ -95,7 +83,6 @@ fn handle(pipe: std::fs::File) {
     let _ = out.flush();
 }
 
-/// Creates a pipe instance with a restrictive DACL and waits for one client.
 fn accept_client() -> Result<std::fs::File, String> {
     use windows_sys::Win32::Foundation::{GetLastError, LocalFree, ERROR_PIPE_CONNECTED, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::Security::Authorization::{
@@ -108,7 +95,7 @@ fn accept_client() -> Result<std::fs::File, String> {
         PIPE_UNLIMITED_INSTANCES, PIPE_WAIT,
     };
 
-    // SYSTEM and Administrators: full access. Interactive users: read/write.
+    // SYSTEM and Administrators: full access; signed-in users: read/write.
     let sddl: Vec<u16> = "D:P(A;;GA;;;SY)(A;;GA;;;BA)(A;;GRGW;;;IU)\0".encode_utf16().collect();
     let name: Vec<u16> = format!("{}\0", ipc::PIPE_NAME).encode_utf16().collect();
     unsafe {
@@ -143,7 +130,6 @@ fn accept_client() -> Result<std::fs::File, String> {
     }
 }
 
-/// Sends one request to the service. `Err(None)` means the service isn't running.
 pub fn call(req: &Request) -> Result<String, Option<String>> {
     let pipe = std::fs::OpenOptions::new().read(true).write(true).open(ipc::PIPE_NAME);
     let mut pipe = match pipe {
@@ -157,8 +143,6 @@ pub fn call(req: &Request) -> Result<String, Option<String>> {
     ipc::decode_reply(&line).map_err(Some)
 }
 
-/// Runs a privileged request: through the service when it's installed, or
-/// directly when this process is already elevated.
 pub fn perform(req: &Request) -> Result<String, String> {
     match call(req) {
         Ok(msg) => Ok(msg),

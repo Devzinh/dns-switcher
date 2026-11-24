@@ -1,21 +1,7 @@
-//! Wire protocol between the app and the DNS Switcher service.
-//!
-//! The service runs as LocalSystem and is the only part that changes network
-//! settings. Requests travel over a local named pipe as one line of
-//! tab-separated fields; replies are one line starting with `OK` or `ERR`.
-//!
-//! Everything a request carries is re-validated by the service: addresses must
-//! parse as IP addresses of the requested family, and the adapter must exist
-//! (the service maps it to an interface index itself). No field is ever passed
-//! to a shell.
-
 use std::net::IpAddr;
 
-/// Named pipe the service listens on.
 pub const PIPE_NAME: &str = r"\\.\pipe\DnsSwitcherService";
-/// Windows service name (as in `sc query DnsSwitcher`).
 pub const SERVICE_NAME: &str = "DnsSwitcher";
-/// Longest request line the service will read.
 pub const MAX_LINE: usize = 512;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,17 +9,13 @@ pub enum Request {
     Ping,
     Flush,
     Restore { adapter: String },
-    /// Installed and latest version, and whether automatic updates are on.
     UpdateStatus,
-    /// Check now and install a newer signed release if there is one.
     UpdateNow,
-    /// Turn automatic updates on or off.
     AutoUpdate(bool),
     Apply { adapter: String, ipv6: bool, dns1: IpAddr, dns2: Option<IpAddr> },
 }
 
 impl Request {
-    /// Builds an `Apply`, checking both addresses belong to the chosen family.
     pub fn apply(adapter: &str, ipv6: bool, dns1: &str, dns2: &str) -> Result<Request, String> {
         let adapter = check_adapter(adapter)?;
         let dns1 = parse_ip(dns1, ipv6)?;
@@ -41,7 +23,6 @@ impl Request {
             "" => None,
             s => Some(parse_ip(s, ipv6)?),
         }
-        // The same address twice is a typo; Windows would reject the second.
         .filter(|d| *d != dns1);
         Ok(Request::Apply { adapter, ipv6, dns1, dns2 })
     }
@@ -89,7 +70,6 @@ impl Request {
     }
 }
 
-/// Reply line for a result.
 pub fn encode_reply(r: &Result<String, String>) -> String {
     let clean = |s: &str| s.replace(['\r', '\n', '\t'], " ");
     match r {
@@ -108,8 +88,6 @@ pub fn decode_reply(line: &str) -> Result<String, String> {
     }
 }
 
-/// Parses a DNS server list separated by commas, semicolons and/or spaces
-/// (the registry uses both styles), keeping one address family.
 pub fn parse_server_list(list: &str, ipv6: bool) -> Vec<IpAddr> {
     list.split([',', ' ', ';'])
         .filter_map(|s| s.trim().parse::<IpAddr>().ok())
@@ -128,8 +106,6 @@ fn parse_ip(s: &str, ipv6: bool) -> Result<IpAddr, String> {
     Ok(ip)
 }
 
-/// Adapter names are only compared against the system's own list, but reject
-/// anything that could never be one before it gets that far.
 fn check_adapter(name: &str) -> Result<String, String> {
     let ok = !name.is_empty()
         && name.len() <= 256
@@ -166,7 +142,7 @@ mod tests {
     #[test]
     fn rejects_bad_addresses() {
         assert!(Request::apply("Ethernet", false, "1.1.1.1 & calc", "").is_err());
-        assert!(Request::apply("Ethernet", false, "2606:4700::1111", "").is_err()); // wrong family
+        assert!(Request::apply("Ethernet", false, "2606:4700::1111", "").is_err());
         assert!(Request::apply("Ethernet", true, "1.1.1.1", "").is_err());
         assert!(Request::apply("Ethernet", false, "0.0.0.0", "").is_err());
         assert!(Request::apply("Ethernet", false, "224.0.0.1", "").is_err());

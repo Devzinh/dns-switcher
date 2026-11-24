@@ -1,9 +1,3 @@
-// Windows resources for the executable: icon, version information (shown in
-// Properties > Details and used by antivirus reputation), and a manifest.
-//
-// The manifest runs the app with the user's normal rights (asInvoker). Changing
-// DNS is done by the DNS Switcher service that the setup program installs, so
-// opening the app never needs a UAC prompt.
 fn main() {
     println!("cargo:rerun-if-changed=assets/icon.ico");
     println!("cargo:rerun-if-changed=build.rs");

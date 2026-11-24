@@ -1,10 +1,4 @@
-//! Regenerates the app icon from `assets/icon.svg`.
-//!
-//!     cargo run --example make_icon
-//!
-//! Writes `assets/icon.png` (256 px, used for the window icon) and
-//! `assets/icon.ico` (16–256 px, embedded in the .exe by build.rs).
-
+// cargo run --example make_icon  (assets/icon.svg -> assets/icon.png, assets/icon.ico)
 use image::codecs::ico::{IcoEncoder, IcoFrame};
 use image::{ExtendedColorType, RgbaImage};
 use resvg::{tiny_skia, usvg};
@@ -13,7 +7,6 @@ fn render(tree: &usvg::Tree, size: u32) -> RgbaImage {
     let mut pixmap = tiny_skia::Pixmap::new(size, size).expect("pixmap");
     let scale = size as f32 / tree.size().width();
     resvg::render(tree, tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
-    // tiny-skia stores premultiplied alpha; image expects straight alpha.
     let mut img = RgbaImage::new(size, size);
     for (dst, src) in img.pixels_mut().zip(pixmap.pixels()) {
         let c = src.demultiply();

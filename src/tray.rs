@@ -1,11 +1,3 @@
-//! Notification-area icon: quick switching while the window is hidden.
-//!
-//! Menu and click handlers run on the UI thread from the window's message loop.
-//! Network work happens on worker threads, which leave their result in
-//! `PENDING`; a thread timer (also on the UI thread) copies it into the menu's
-//! status line and the icon tooltip, so feedback shows even when no egui frame
-//! is being drawn.
-
 use crate::service;
 use dns_switcher::ipc::Request;
 use dns_switcher::probe;
@@ -16,9 +8,7 @@ use std::sync::{Arc, Mutex};
 use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuItem, PredefinedMenuItem};
 use tray_icon::{Icon, MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent};
 
-/// The app window, so the tray can show it without an egui frame running.
 pub static WINDOW: AtomicIsize = AtomicIsize::new(0);
-/// Latest message from tray actions, picked up by the timer.
 static PENDING: Mutex<Option<String>> = Mutex::new(None);
 
 thread_local! {
@@ -29,8 +19,6 @@ thread_local! {
 const RUN_KEY: &str = r"Software\Microsoft\Windows\CurrentVersion\Run";
 const RUN_VALUE: &str = "DNS Switcher";
 
-/// Creates the icon. Call once, on the UI thread, after the window exists.
-/// `adapter` is the adapter tray actions apply to (kept in sync by the app).
 pub fn install(adapter: Arc<Mutex<String>>, wake: impl Fn() + Send + Sync + 'static) -> Result<(), String> {
     let status = MenuItem::new("DNS Switcher", false, None);
     let open = MenuItem::new("Open DNS Switcher", true, None);
@@ -119,7 +107,7 @@ pub fn install(adapter: Arc<Mutex<String>>, wake: impl Fn() + Send + Sync + 'sta
             set_pending("Checking for updates…".into());
             background(&wake, || service::perform(&Request::UpdateNow));
         } else if id == auto_update {
-            // The menu has already toggled the check mark; send the new state.
+            // The menu item has already flipped its check mark.
             let on = AUTO_UPDATE_ITEM.with(|c| c.borrow().as_ref().map(|i| i.is_checked())).unwrap_or(false);
             background(&wake, move || service::perform(&Request::AutoUpdate(on)));
         } else if id == quit {
@@ -148,7 +136,7 @@ pub fn set_pending(msg: String) {
     }
 }
 
-/// Polls `PENDING` twice a second on the UI thread.
+// Results arrive on worker threads; this UI-thread timer shows them even while the window is hidden.
 fn start_timer() {
     use windows_sys::Win32::UI::WindowsAndMessaging::SetTimer;
     unsafe extern "system" fn tick(_: windows_sys::Win32::Foundation::HWND, _: u32, _: usize, _: u32) {
@@ -194,7 +182,6 @@ pub fn autostart_enabled() -> bool {
         .is_ok()
 }
 
-/// Adds or removes the per-user "start at sign-in" entry (no admin needed).
 pub fn set_autostart(on: bool) -> Result<(), String> {
     let (key, _) = winreg::RegKey::predef(winreg::enums::HKEY_CURRENT_USER)
         .create_subkey(RUN_KEY)

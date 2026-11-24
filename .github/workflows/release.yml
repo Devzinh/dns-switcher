@@ -1,20 +1,3 @@
-# Builds the app and the installer on GitHub-hosted Windows runners.
-# Actions are pinned to full commit SHAs (tag in the trailing comment).
-#
-# - Manual run (Actions > Release > Run workflow): build and test only; the files
-#   are attached to the run as an artifact.
-# - Pushing a tag like v0.1.2: same build, then a *draft* release with the
-#   files is created for a maintainer to review and publish.
-#
-# Every published file gets a GitHub build provenance attestation, so anyone
-# can check it was built here from this repository:
-#   gh attestation verify DNS-Switcher-Setup-0.1.2.exe -R Devzinh/dns-switcher
-#
-# Code signing through SignPath runs only when the repository variables
-# SIGNPATH_ORGANIZATION_ID and SIGNPATH_PROJECT_SLUG and the secret
-# SIGNPATH_API_TOKEN are set (see CODE_SIGNING.md). Without them the files
-# are built unsigned.
-
 name: Release
 
 on:
@@ -39,7 +22,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
-      # rustup is preinstalled on GitHub runners; no third-party action needed.
       - name: Rust toolchain
         run: rustup toolchain install stable --profile minimal && rustup default stable
 
@@ -59,7 +41,6 @@ jobs:
       - name: Build
         run: cargo build --release
 
-      # ---- sign dns_switcher.exe (optional) ----
       - name: Upload unsigned app
         if: env.SIGN == 'true'
         id: unsigned-app
@@ -81,7 +62,6 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: target/release
 
-      # ---- installer ----
       - name: Install Inno Setup
         run: choco install innosetup --yes --no-progress
 
@@ -91,7 +71,6 @@ jobs:
           & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" "/DAppVersion=${{ steps.version.outputs.version }}" installer\dns-switcher.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      # ---- sign the installer (optional) ----
       - name: Upload unsigned installer
         if: env.SIGN == 'true'
         id: unsigned-setup
@@ -113,7 +92,6 @@ jobs:
           wait-for-completion: true
           output-artifact-directory: installer/Output
 
-      # ---- package, attest, publish ----
       - name: Collect files and hashes
         shell: pwsh
         run: |
@@ -126,8 +104,6 @@ jobs:
           } | Set-Content -Encoding ascii dist\SHA256SUMS.txt
           Get-Content dist\SHA256SUMS.txt
 
-      # The self-updater only installs releases whose SHA256SUMS.txt carries a
-      # valid signature from this key (public half: update-key.pub).
       - name: Sign hash list for the updater
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
@@ -153,9 +129,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Re-running for an existing release (for example after moving its tag)
-          # must not create a second, untagged draft. The files stay attached to
-          # this run as an artifact for a maintainer to upload by hand if needed.
           gh release view $env:GITHUB_REF_NAME --json tagName 2>$null | Out-Null
           if ($LASTEXITCODE -eq 0) {
             Write-Output "::notice::Release $env:GITHUB_REF_NAME already exists; not creating a draft. Files are in this run's artifact."

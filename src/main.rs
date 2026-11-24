@@ -14,12 +14,11 @@ use std::sync::mpsc::{Receiver, Sender};
 use std::thread;
 use std::time::Instant;
 
-const ANIM: f32 = 0.22; // seconds for UI transitions
-/// How many resolvers are measured at the same time.
+const ANIM: f32 = 0.22;
+// More at once floods home routers and shows up as false packet loss.
 const PARALLEL_PROBES: usize = 6;
 const GOOD: egui::Color32 = egui::Color32::from_rgb(60, 150, 70);
 const BAD: egui::Color32 = egui::Color32::from_rgb(190, 70, 70);
-
 
 #[derive(PartialEq, Clone, Copy)]
 enum Mode {
@@ -28,9 +27,9 @@ enum Mode {
 }
 
 enum Msg {
-    Status(String, bool), // text, ok?
-    Current(String, String, Vec<String>), // adapter, DNS in use, provider (DHCP) DNS
-    TestResult(u64, usize, probe::Probe), // test generation, index, result
+    Status(String, bool),
+    Current(String, String, Vec<String>),
+    TestResult(u64, usize, probe::Probe),
 }
 
 struct App {
@@ -43,26 +42,19 @@ struct App {
     custom1: String,
     custom2: String,
     use_custom: bool,
-    /// DNS servers the router/provider hands out by DHCP for this adapter.
     provider: Vec<String>,
-    /// The provider's DNS is the selected choice (applying it = Automatic).
     use_provider: bool,
-    /// The last test included the provider's DNS as its last entry.
     tested_provider: bool,
     status: String,
     status_ok: bool,
     busy: bool,
-    /// One slot per server in the list that was tested (QUICK in simple mode).
     results: Vec<Option<probe::Probe>>,
     tested_simple: bool,
     test_got: usize,
     test_gen: u64,
     testing: bool,
-    /// DNS servers in use on the selected adapter, as reported by Windows.
     current: String,
-    /// Adapter the tray menu acts on.
     tray_adapter: std::sync::Arc<std::sync::Mutex<String>>,
-    /// Set when the window should hide to the tray instead of closing.
     tray_ready: bool,
     best: Option<usize>,
     tx: Sender<Msg>,
@@ -78,7 +70,6 @@ impl App {
         let mut style = (*cc.egui_ctx.style()).clone();
         style.spacing.item_spacing = egui::vec2(10.0, 10.0);
         style.spacing.button_padding = egui::vec2(12.0, 8.0);
-        // Smooth transitions for hover/selection highlights and toggles.
         style.animation_time = ANIM;
         cc.egui_ctx.set_style(style);
 
@@ -127,7 +118,6 @@ impl App {
         }
     }
 
-    /// Reads the adapter's DNS off the UI thread; the answer arrives as Msg::Current.
     fn refresh_current(&mut self) {
         let adapter = self.adapter_name();
         if adapter.is_empty() {
@@ -219,12 +209,9 @@ impl App {
         });
     }
 
-    /// Probes every server of the visible list in parallel (QUICK in simple mode).
     fn start_test(&mut self, simple: bool) {
         let list: &[Provider] = if simple { QUICK } else { self.current_list() };
         let mut servers: Vec<String> = list.iter().map(|p| p.dns1.to_string()).collect();
-        // Your provider's DNS (IPv4, from DHCP) is the baseline everything is
-        // compared with: it's often the closest resolver and the best for CDNs.
         let with_provider = !self.ipv6 || simple;
         self.clear_results();
         self.tested_provider = false;
@@ -240,8 +227,6 @@ impl App {
         self.best = None;
         self.testing = true;
         self.set_status(&format!("Testing DNS servers… 0/{}", servers.len()), true);
-        // A small worker pool: probing every server at once floods home routers
-        // and shows up as false packet loss.
         let queue: Vec<(usize, String)> = servers.into_iter().enumerate().collect();
         let queue = std::sync::Arc::new(std::sync::Mutex::new(queue));
         for _ in 0..PARALLEL_PROBES.min(self.results.len()) {
@@ -256,7 +241,6 @@ impl App {
         }
     }
 
-    /// Drops current results; replies from an earlier test are ignored from now on.
     fn clear_results(&mut self) {
         self.results.clear();
         self.best = None;
@@ -372,7 +356,6 @@ impl eframe::App for App {
             tray::set_pending("Still running here. Right-click for quick switching.".into());
         }
 
-        // Detect a Simple/Advanced switch to drive a fade + slide transition.
         if self.mode != self.prev_mode {
             self.prev_mode = self.mode;
             self.clear_results();
@@ -443,9 +426,8 @@ impl eframe::App for App {
             }
             ui.separator();
 
-            // Fade and slide the panel contents in on a mode change.
             let t = (self.mode_since.elapsed().as_secs_f32() / ANIM).clamp(0.0, 1.0);
-            let ease = t * t * (3.0 - 2.0 * t); // smoothstep
+            let ease = t * t * (3.0 - 2.0 * t);
             if ease < 1.0 {
                 ui.add_space((1.0 - ease) * 10.0);
                 ui.ctx().request_repaint();
@@ -492,7 +474,6 @@ impl App {
         ui.add_space(4.0);
         let mut pending: Option<(String, String)> = None;
         egui::ScrollArea::vertical()
-            // leave room for the two button rows below
             .max_height((ui.available_height() - 120.0).max(110.0))
             .auto_shrink([false, false])
             .show(ui, |ui| {
@@ -590,7 +571,6 @@ impl App {
             .max_height((ui.available_height() - 64.0).max(120.0))
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                // reserve room for the scrollbar so the Speed column isn't clipped
                 ui.set_max_width(ui.available_width() - 14.0);
                 egui::Grid::new("servers")
                     .striped(true)
@@ -699,7 +679,6 @@ impl App {
     }
 }
 
-/// The seven measurement cells of an advanced-mode row.
 fn probe_cells(ui: &mut egui::Ui, r: Option<&probe::Probe>, pending: bool) {
     let Some(r) = r else {
         let mark = if pending { "…" } else { "–" };
@@ -740,7 +719,6 @@ fn probe_cells(ui: &mut egui::Ui, r: Option<&probe::Probe>, pending: bool) {
     };
 }
 
-/// Right-hand text of a simple-mode row: lookup time and time to sites.
 fn row_metric(r: Option<&Option<probe::Probe>>, best: bool, testing: bool) -> Option<String> {
     match r {
         Some(Some(r)) => Some(match (r.median(), r.cdn) {
@@ -761,7 +739,6 @@ fn row_metric(r: Option<&Option<probe::Probe>>, best: bool, testing: bool) -> Op
     }
 }
 
-/// Milliseconds in a grid cell, or a dash when there is no value.
 fn ms_cell(ui: &mut egui::Ui, ms: Option<u32>) {
     match ms {
         Some(v) => ui.label(egui::RichText::new(format!("{v} ms")).monospace()),
@@ -769,10 +746,9 @@ fn ms_cell(ui: &mut egui::Ui, ms: Option<u32>) {
     };
 }
 
-/// A left-aligned, full-width selectable DNS row (two lines), clipped-safe.
 fn dns_row(ui: &mut egui::Ui, selected: bool, name: &str, dns1: &str, dns2: &str, metric: Option<&str>) -> bool {
     use egui::{Align2, FontId, Pos2, Rounding, Sense, Stroke, Vec2};
-    let w = ui.available_width() - 14.0; // keep clear of the scrollbar
+    let w = ui.available_width() - 14.0;
     let (rect, resp) = ui.allocate_exact_size(Vec2::new(w, 46.0), Sense::click());
     let visuals = ui.visuals();
     let hovered = resp.hovered();
@@ -818,7 +794,6 @@ fn save_screenshot(image: &egui::ColorImage, path: &str) {
 }
 
 impl App {
-    /// Notification-area icon. Failure only disables hide-to-tray.
     fn start_tray(&mut self, cc: &eframe::CreationContext<'_>) {
         use raw_window_handle::{HasWindowHandle, RawWindowHandle};
         if let Ok(h) = cc.window_handle() {
@@ -834,7 +809,6 @@ impl App {
     }
 }
 
-/// Title bar / taskbar icon, decoded from the PNG baked into the binary.
 fn window_icon() -> Option<egui::IconData> {
     let img = image::load_from_memory(include_bytes!("../assets/icon.png"))
         .ok()?
@@ -856,7 +830,6 @@ fn main() -> eframe::Result<()> {
         }
         return Ok(());
     }
-    // Used by the installer and uninstaller, running as the signed-in user.
     for (flag, on) in [("--set-autostart", true), ("--clear-autostart", false)] {
         if args.iter().any(|a| a == flag) {
             std::process::exit(if tray::set_autostart(on).is_ok() { 0 } else { 1 });

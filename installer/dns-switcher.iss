@@ -1,15 +1,4 @@
-; DNS Switcher installer (Inno Setup 6).
-;
-; Build:  cargo build --release
-;         "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\dns-switcher.iss
-; Output: installer\Output\DNS-Switcher-Setup-<version>.exe
-;
-; Installs the app to Program Files, registers the "DNS Switcher Service"
-; (runs as LocalSystem, changes DNS on the app's behalf so the app itself never
-; needs administrator rights), and adds Start menu entries and an uninstaller.
-
 #define AppName "DNS Switcher"
-; CI passes the version from Cargo.toml with /DAppVersion=x.y.z.
 #ifndef AppVersion
   #define AppVersion "0.1.3"
 #endif
@@ -79,18 +68,14 @@ Name: "{group}\{cm:UninstallProgram,{#AppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopicon
 
 [Registry]
-; Read by the service. The app's "Update automatically" menu item changes it
-; through the service.
 Root: HKLM; Subkey: "SOFTWARE\DNS Switcher"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\DNS Switcher"; ValueType: dword; ValueName: "AutoUpdate"; ValueData: "1"; Tasks: autoupdate
 Root: HKLM; Subkey: "SOFTWARE\DNS Switcher"; ValueType: dword; ValueName: "AutoUpdate"; ValueData: "0"; Tasks: not autoupdate
 
 [Run]
-; The sign-in entry is per user, so the app writes it as the user who started
-; setup, not as the administrator account that approved the UAC prompt.
+; Runs as the user who started setup, so the entry lands in their profile, not the admin's.
 Filename: "{app}\{#AppExe}"; Parameters: "--set-autostart"; Tasks: startup; Check: not FromService; Flags: runasoriginaluser runhidden waituntilterminated
 Filename: "{app}\{#AppExe}"; Description: "{cm:LaunchApp}"; Flags: nowait postinstall skipifsilent runasoriginaluser
-; Silent installs and upgrades (winget) bring the tray icon back right away.
 Filename: "{app}\{#AppExe}"; Parameters: "--tray"; Tasks: startup; Check: not FromService; Flags: nowait skipifnotsilent runasoriginaluser
 
 [UninstallRun]
@@ -104,7 +89,6 @@ Type: filesandordirs; Name: "{app}\updates"
 Type: dirifempty; Name: "{app}"
 
 [Code]
-{ True when the DNS Switcher service started this setup for an automatic update. }
 function FromService: Boolean;
 var
   I: Integer;
@@ -123,8 +107,6 @@ begin
     Code := -1;
   Result := Code;
 end;
-
-{ Stop the service and any running copy of the app so files can be replaced. }
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   Code: Integer;
@@ -135,14 +117,13 @@ begin
   Result := '';
 end;
 
-{ Register (or update) and start the service. The binary path is quoted so a
-  path with spaces can't be hijacked (unquoted service path). }
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   BinPath: String;
 begin
   if CurStep <> ssPostInstall then
     exit;
+  { Quoted: an unquoted service path with spaces can be hijacked. }
   BinPath := 'binPath= "\"' + ExpandConstant('{app}\{#AppExe}') + '\" --service"';
   if Sc('create {#ServiceName} ' + BinPath + ' start= auto DisplayName= "DNS Switcher Service"') <> 0 then
     Sc('config {#ServiceName} ' + BinPath + ' start= auto DisplayName= "DNS Switcher Service"');

@@ -1,17 +1,3 @@
-//! Resolver measurement over plain DNS (UDP/53).
-//!
-//! Each probe sends hand-built RFC 1035 queries and reports:
-//! - warm samples: repeated A lookups of a popular name (answered from cache),
-//!   summarised as median, p95, jitter and loss;
-//! - one cold lookup: a random, never-cached name, so the resolver has to
-//!   recurse to the authoritative servers;
-//! - the anycast site that answered, from a CHAOS TXT `id.server` query
-//!   (supported by Cloudflare, Quad9 and others; `None` when unsupported);
-//! - answer quality: the resolver is asked for a CDN hostname whose answer
-//!   depends on where the CDN thinks you are, and the time to open a TCP
-//!   connection to the server it returns is measured. A resolver that answers
-//!   fast but sends you to a far-away server shows up here.
-
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream, UdpSocket};
@@ -20,17 +6,10 @@ use std::time::{Duration, Instant};
 
 pub const WARM_DOMAIN: &str = "www.google.com";
 pub const COLD_PARENT: &str = "google.com";
-/// Hosts whose answer depends on where the CDN thinks the resolver (or the
-/// client subnet it forwards) is: Akamai, Azure Front Door/Akamai and
-/// CloudFront. Measured from Brazil, resolvers in Europe sent all three to
-/// servers ~200 ms away while nearby resolvers got 4–12 ms. Anycast-only
-/// sites (Google, Cloudflare, Netflix) answer the same everywhere, so they
-/// can't tell resolvers apart and aren't used.
+// Answers depend on the resolver's location; anycast-only sites (Google, Cloudflare) can't tell resolvers apart.
 pub const CDN_HOSTS: [&str; 3] = ["www.akamai.com", "www.microsoft.com", "www.amazon.com"];
 const CDN_PORT: u16 = 443;
 const CDN_CONNECT_MS: u64 = 1000;
-/// Added to the score of servers whose CDN answer couldn't be measured when
-/// others could, so they sort after them instead of looking fast.
 const CDN_MISSING_PENALTY: u32 = 1000;
 pub const SAMPLES: usize = 5;
 pub const TIMEOUT_MS: u64 = 500;
@@ -41,18 +20,12 @@ const TYPE_TXT: u16 = 16;
 const CLASS_IN: u16 = 1;
 const CLASS_CH: u16 = 3;
 
-/// Result of probing one resolver.
 #[derive(Clone, Debug, Default)]
 pub struct Probe {
-    /// Round-trip time of each warm sample in ms; `None` = no valid reply in time.
     pub samples: Vec<Option<u32>>,
-    /// Round-trip time of the uncached lookup in ms.
     pub cold: Option<u32>,
-    /// Anycast site identifier reported by the resolver, if any.
     pub site: Option<String>,
-    /// Median TCP connect time (ms) to the CDN servers this resolver picked.
     pub cdn: Option<u32>,
-    /// The CDN servers this resolver returned, with connect times.
     pub cdn_detail: Vec<(&'static str, Ipv4Addr, Option<u32>)>,
 }
 
@@ -72,7 +45,6 @@ impl Probe {
         }
     }
 
-    /// 95th percentile, nearest-rank method.
     pub fn p95(&self) -> Option<u32> {
         let v = self.answered();
         if v.is_empty() {
@@ -82,7 +54,6 @@ impl Probe {
         Some(v[rank - 1])
     }
 
-    /// Mean absolute difference between consecutive answered samples (RFC 3550 style).
     pub fn jitter(&self) -> Option<u32> {
         let seq: Vec<u32> = self.samples.iter().flatten().copied().collect();
         if seq.len() < 2 {
@@ -92,7 +63,6 @@ impl Probe {
         Some((sum as f32 / (seq.len() - 1) as f32).round() as u32)
     }
 
-    /// Share of warm samples that got no valid reply, 0–100.
     pub fn loss_pct(&self) -> u32 {
         if self.samples.is_empty() {
             return 100;
@@ -101,8 +71,6 @@ impl Probe {
         (lost * 100 / self.samples.len()) as u32
     }
 
-    /// Ranking key: reliable servers (≤ 20% loss) first, then by score
-    /// (median lookup time, plus the CDN connect time when `use_cdn`), then p95.
     pub fn rank_key(&self, use_cdn: bool) -> Option<(bool, u32, u32)> {
         let m = self.median()?;
         let score = if use_cdn { m + self.cdn.unwrap_or(CDN_MISSING_PENALTY) } else { m };
@@ -110,9 +78,6 @@ impl Probe {
     }
 }
 
-/// Index of the best probe. When at least one CDN measurement worked, the
-/// ranking includes it: what matters is how fast you reach the content, not
-/// only how fast the name resolves.
 pub fn best(probes: &[Option<Probe>]) -> Option<usize> {
     let use_cdn = probes.iter().flatten().any(|p| p.cdn.is_some());
     probes
@@ -123,7 +88,6 @@ pub fn best(probes: &[Option<Probe>]) -> Option<usize> {
         .map(|(_, i)| i)
 }
 
-/// Full measurement of one resolver. Blocking; run it off the UI thread.
 pub fn probe(server: &str) -> Probe {
     let Ok(ip) = server.trim().parse::<IpAddr>() else {
         return Probe { samples: vec![None; SAMPLES], ..Default::default() };
@@ -151,12 +115,10 @@ pub fn probe(server: &str) -> Probe {
     Probe { samples, cold, site, cdn, cdn_detail }
 }
 
-/// IPv4 address `server` returns for `host`, or `None`.
 pub fn resolve_a(server: IpAddr, host: &str) -> Option<Ipv4Addr> {
     exchange(server, host, TYPE_A, CLASS_IN, Duration::from_millis(TIMEOUT_MS)).and_then(|(_, r)| first_a(&r))
 }
 
-/// Best of two TCP handshakes to the CDN server, in ms.
 fn connect_ms(ip: Ipv4Addr) -> Option<u32> {
     let addr = SocketAddr::new(IpAddr::V4(ip), CDN_PORT);
     (0..2)
@@ -169,7 +131,6 @@ fn connect_ms(ip: Ipv4Addr) -> Option<u32> {
         .min()
 }
 
-/// Sends one query and waits for the matching reply. Returns (ms, reply bytes).
 fn exchange(ip: IpAddr, name: &str, qtype: u16, qclass: u16, timeout: Duration) -> Option<(u32, Vec<u8>)> {
     let bind = if ip.is_ipv6() { "[::]:0" } else { "0.0.0.0:0" };
     let sock = UdpSocket::bind(bind).ok()?;
@@ -186,17 +147,15 @@ fn exchange(ip: IpAddr, name: &str, qtype: u16, qclass: u16, timeout: Duration) 
         if is_reply_to(&buf[..n], id) {
             return Some((start.elapsed().as_millis() as u32, buf[..n].to_vec()));
         }
-        // Stray or mismatched datagram: keep waiting within the same budget.
     }
 }
 
-/// RFC 1035 query with RD set and one question. `None` if a label is invalid.
 pub fn build_query(id: u16, name: &str, qtype: u16, qclass: u16) -> Option<Vec<u8>> {
     let mut q = Vec::with_capacity(18 + name.len());
     q.extend_from_slice(&id.to_be_bytes());
-    q.extend_from_slice(&[0x01, 0x00]); // flags: RD
-    q.extend_from_slice(&[0x00, 0x01]); // QDCOUNT
-    q.extend_from_slice(&[0, 0, 0, 0, 0, 0]); // AN/NS/AR
+    q.extend_from_slice(&[0x01, 0x00]);
+    q.extend_from_slice(&[0x00, 0x01]);
+    q.extend_from_slice(&[0, 0, 0, 0, 0, 0]);
     for label in name.trim_end_matches('.').split('.') {
         if label.is_empty() || label.len() > 63 {
             return None;
@@ -210,12 +169,10 @@ pub fn build_query(id: u16, name: &str, qtype: u16, qclass: u16) -> Option<Vec<u
     Some(q)
 }
 
-/// A response (QR=1) carrying our transaction id.
 fn is_reply_to(msg: &[u8], id: u16) -> bool {
     msg.len() >= 12 && u16::from_be_bytes([msg[0], msg[1]]) == id && msg[2] & 0x80 != 0
 }
 
-/// The answer section's records as (type, rdata), skipping the question.
 fn answers(msg: &[u8]) -> Option<Vec<(u16, &[u8])>> {
     if msg.len() < 12 {
         return None;
@@ -239,7 +196,6 @@ fn answers(msg: &[u8]) -> Option<Vec<(u16, &[u8])>> {
     Some(out)
 }
 
-/// First IPv4 address in the answer section (after any CNAME chain).
 pub fn first_a(msg: &[u8]) -> Option<Ipv4Addr> {
     answers(msg)?
         .into_iter()
@@ -247,7 +203,6 @@ pub fn first_a(msg: &[u8]) -> Option<Ipv4Addr> {
         .map(|(_, d)| Ipv4Addr::new(d[0], d[1], d[2], d[3]))
 }
 
-/// Text of the first TXT record in the answer section, strings concatenated.
 pub fn first_txt(msg: &[u8]) -> Option<String> {
     if msg.len() < 12 {
         return None;
@@ -280,7 +235,6 @@ pub fn first_txt(msg: &[u8]) -> Option<String> {
     None
 }
 
-/// Position just past a (possibly compressed) domain name.
 fn skip_name(msg: &[u8], mut pos: usize) -> Option<usize> {
     loop {
         let len = *msg.get(pos)?;
@@ -301,7 +255,6 @@ fn random_u64() -> u64 {
     h.finish()
 }
 
-/// 12 lowercase alphanumerics, e.g. `k3x9q0ab7mzt`.
 fn random_label() -> String {
     const ALPHABET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
     let mut x = random_u64();
@@ -329,8 +282,8 @@ mod tests {
     fn query_matches_rfc1035_layout() {
         let q = build_query(0x1234, "www.google.com", TYPE_A, CLASS_IN).unwrap();
         let expected: Vec<u8> = vec![
-            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0, //
-            3, b'w', b'w', b'w', 6, b'g', b'o', b'o', b'g', b'l', b'e', 3, b'c', b'o', b'm', 0, //
+            0x12, 0x34, 0x01, 0x00, 0x00, 0x01, 0, 0, 0, 0, 0, 0,
+            3, b'w', b'w', b'w', 6, b'g', b'o', b'o', b'g', b'l', b'e', 3, b'c', b'o', b'm', 0,
             0x00, 0x01, 0x00, 0x01,
         ];
         assert_eq!(q, expected);
@@ -347,7 +300,7 @@ mod tests {
         let mut m = vec![0x12, 0x34, 0x81, 0x80, 0, 1, 0, 0, 0, 0, 0, 0];
         assert!(is_reply_to(&m, 0x1234));
         assert!(!is_reply_to(&m, 0x1235));
-        m[2] = 0x01; // QR=0: a query, not a reply
+        m[2] = 0x01;
         assert!(!is_reply_to(&m, 0x1234));
         assert!(!is_reply_to(&m[..8], 0x1234));
     }
@@ -365,7 +318,6 @@ mod tests {
     fn parses_a_after_cname() {
         let mut m = vec![0, 1, 0x81, 0x80, 0, 1, 0, 2, 0, 0, 0, 0];
         m.extend(build_query(0, "www.akamai.com", TYPE_A, CLASS_IN).unwrap()[12..].iter());
-        // CNAME www.akamai.com -> x (rdata: 1 'x' 0)
         m.extend_from_slice(&[0xC0, 0x0C, 0, 5, 0, 1, 0, 0, 0, 60, 0, 3, 1, b'x', 0]);
         m.extend_from_slice(&[0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4, 23, 45, 67, 89]);
         assert_eq!(first_a(&m), Some(Ipv4Addr::new(23, 45, 67, 89)));
@@ -385,7 +337,7 @@ mod tests {
         let x = p(&[Some(10), Some(30), None, Some(12), Some(14)]);
         assert_eq!(x.median(), Some(13));
         assert_eq!(x.p95(), Some(30));
-        assert_eq!(x.jitter(), Some(13)); // |10-30| + |30-12| + |12-14| = 40 / 3
+        assert_eq!(x.jitter(), Some(13));
         assert_eq!(x.loss_pct(), 20);
         assert_eq!(p(&[None, None]).median(), None);
         assert_eq!(p(&[None, None]).loss_pct(), 100);
@@ -393,8 +345,6 @@ mod tests {
 
     #[test]
     fn ranking_counts_cdn_distance() {
-        // Fast resolver that sends you far away loses to a slightly slower one
-        // that sends you to a nearby server.
         let mut fast_far = p(&[Some(5); 5]);
         fast_far.cdn = Some(180);
         let mut near = p(&[Some(12); 5]);
@@ -402,7 +352,6 @@ mod tests {
         let mut unmeasured = p(&[Some(3); 5]);
         unmeasured.cdn = None;
         assert_eq!(best(&[Some(fast_far.clone()), Some(near), Some(unmeasured)]), Some(1));
-        // Without any CDN data, plain lookup time decides.
         fast_far.cdn = None;
         assert_eq!(best(&[Some(p(&[Some(9); 5])), Some(fast_far)]), Some(1));
     }
@@ -425,7 +374,6 @@ mod tests {
         assert_ne!(random_label(), random_label());
     }
 
-    /// Hits the network. Run with `cargo test -- --ignored --nocapture`.
     #[test]
     #[ignore]
     fn live_cloudflare() {

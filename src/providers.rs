@@ -1,6 +1,3 @@
-// Curated public DNS resolvers, grouped by purpose (Default / Secure / Family Safe).
-// Each entry: display name, primary, secondary (empty = none).
-
 pub struct Provider {
     pub name: &'static str,
     pub dns1: &'static str,
@@ -120,7 +117,6 @@ pub const GROUPS: &[Group] = &[
     Group { title: "Family Safe", ipv4: FAMILY_V4, ipv6: FAMILY_V6 },
 ];
 
-// Beginner-facing favourites (subset, IPv4).
 pub const QUICK: &[Provider] = &[
     p!("Cloudflare — fast & private", "1.1.1.1", "1.0.0.1"),
     p!("Google — reliable", "8.8.8.8", "8.8.4.4"),

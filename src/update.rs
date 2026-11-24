@@ -1,18 +1,4 @@
-//! Self-update: find the latest GitHub release, download its installer and
-//! prove it's genuine before anything runs it.
-//!
-//! Trust chain:
-//! 1. The release workflow writes `SHA256SUMS.txt` (hash of every file) and
-//!    signs it with an Ed25519 key kept as a GitHub Actions secret, producing
-//!    `SHA256SUMS.txt.sig`.
-//! 2. This module checks that signature against the public key built into the
-//!    app (`update-key.pub`), then checks the downloaded installer against the
-//!    signed hash.
-//! 3. Only a strictly newer version is accepted, so an old (possibly
-//!    vulnerable) release can't be replayed as an "update".
-//!
-//! Anything that fails a check is discarded and nothing is installed.
-
+// Updates are trusted only through the Ed25519-signed SHA256SUMS.txt (public key: update-key.pub).
 use sha2::{Digest, Sha256};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -31,7 +17,6 @@ pub fn current_version() -> Version {
     parse_version(env!("CARGO_PKG_VERSION")).expect("crate version is x.y.z")
 }
 
-/// `"v1.2.3"` or `"1.2.3"`; pre-release or build suffixes are rejected.
 pub fn parse_version(s: &str) -> Option<Version> {
     let s = s.trim().strip_prefix('v').unwrap_or(s.trim());
     let mut it = s.split('.').map(|p| p.parse::<u64>().ok());
@@ -52,8 +37,6 @@ pub struct Release {
     pub sig_url: String,
 }
 
-/// Picks the installer, hash list and signature out of a GitHub
-/// "latest release" API response. `None` if anything is missing.
 pub fn parse_release(json: &serde_json::Value) -> Option<Release> {
     if json["draft"].as_bool() == Some(true) || json["prerelease"].as_bool() == Some(true) {
         return None;
@@ -77,7 +60,6 @@ pub fn parse_release(json: &serde_json::Value) -> Option<Release> {
     })
 }
 
-/// Checks the detached Ed25519 signature (hex) over the hash list.
 pub fn verify_signature(sums: &[u8], sig_hex: &str, public_key_hex: &str) -> Result<(), String> {
     use ed25519_dalek::{Signature, VerifyingKey};
     let key: [u8; 32] = decode_hex(public_key_hex)?.try_into().map_err(|_| "bad public key length")?;
@@ -87,7 +69,6 @@ pub fn verify_signature(sums: &[u8], sig_hex: &str, public_key_hex: &str) -> Res
         .map_err(|_| "update signature does not match".to_string())
 }
 
-/// Hash recorded for `file` in a `sha256sum`-style list (`<hex>  <name>`).
 pub fn hash_for(sums: &str, file: &str) -> Option<String> {
     sums.lines().find_map(|l| {
         let (hash, name) = l.trim().split_once(char::is_whitespace)?;
@@ -110,10 +91,6 @@ fn decode_hex(s: &str) -> Result<Vec<u8>, String> {
         .collect()
 }
 
-/// Where to look for releases and which key to trust. Defaults to the
-/// official repository and the built-in key; `Overrides` exist only for
-/// end-to-end testing and are read by the service from an admin-only
-/// registry key.
 #[derive(Debug, Clone, Default)]
 pub struct Overrides {
     pub api_url: Option<String>,
@@ -123,13 +100,13 @@ pub struct Overrides {
 fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(120)))
-        .https_only(false) // checked per URL in `get`
+        .https_only(false)
         .user_agent(concat!("DNS-Switcher-Updater/", env!("CARGO_PKG_VERSION")))
         .build()
         .into()
 }
 
-/// HTTPS only, except plain HTTP to this machine (used by the test server).
+// Plain HTTP only to this machine (local test server).
 fn allowed(url: &str) -> bool {
     url.starts_with("https://") || url.starts_with("http://127.0.0.1:") || url.starts_with("http://localhost:")
 }
@@ -155,7 +132,6 @@ fn get(agent: &ureq::Agent, url: &str, limit: u64) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
-/// Latest published release, if it carries a signed installer.
 pub fn latest(o: &Overrides) -> Result<Option<Release>, String> {
     let url = o
         .api_url
@@ -166,8 +142,6 @@ pub fn latest(o: &Overrides) -> Result<Option<Release>, String> {
     Ok(parse_release(&json))
 }
 
-/// Downloads the installer and verifies signature and hash. Returns the path
-/// of the verified installer inside `dir`.
 pub fn download_verified(r: &Release, dir: &Path, o: &Overrides) -> Result<PathBuf, String> {
     if r.version <= current_version() {
         return Err("not newer than the installed version".into());

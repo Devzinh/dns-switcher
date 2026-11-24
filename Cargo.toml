@@ -13,7 +13,6 @@ path = "src/lib.rs"
 [[bin]]
 name = "dns_switcher"
 path = "src/main.rs"
-# The binary has no unit tests of its own; they live in the library.
 test = false
 
 [dependencies]
@@ -21,7 +20,6 @@ eframe = { version = "0.28", default-features = true }
 egui = "0.28"
 image = { version = "0.25", default-features = false, features = ["png", "ico"] }
 raw-window-handle = "0.6"
-# self-update: HTTPS client, signature check, hashing, GitHub API JSON
 ureq = "3"
 ed25519-dalek = "2"
 sha2 = "0.10"

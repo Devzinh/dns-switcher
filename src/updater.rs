@@ -1,19 +1,3 @@
-//! Automatic updates, run inside the DNS Switcher service (LocalSystem).
-//!
-//! The service checks GitHub every six hours when automatic updates are on,
-//! or right away when the app asks. A newer release is downloaded into
-//! `<install dir>\updates` (writable only by administrators and SYSTEM, so no
-//! other user can swap the file after it was verified), checked against the
-//! signed hash list (see `dns_switcher::update`), and its installer is run
-//! silently. The installer stops and replaces this service, so the new
-//! service instance finishes the job: it reopens the tray icon for the user
-//! who had it open.
-//!
-//! Settings live in `HKLM\SOFTWARE\DNS Switcher`:
-//! - `AutoUpdate` (DWORD): 1 = install updates automatically. Set by setup.
-//! - `UpdateApiUrl`, `UpdatePublicKey` (strings): test overrides only.
-//!   Writable only by administrators, who could replace the program anyway.
-
 use dns_switcher::update::{self, Overrides};
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -45,12 +29,14 @@ pub fn set_auto(on: bool) -> Result<String, String> {
     Ok(if on { "Automatic updates are on" } else { "Automatic updates are off" }.into())
 }
 
+// Test-only overrides; HKLM is writable only by administrators.
 fn overrides() -> Overrides {
     let k = settings();
     let s = |name: &str| k.as_ref().and_then(|k| k.get_value::<String, _>(name).ok()).filter(|v| !v.is_empty());
     Overrides { api_url: s("UpdateApiUrl"), public_key_hex: s("UpdatePublicKey") }
 }
 
+// Only administrators and SYSTEM can write here, so a verified installer can't be swapped before it runs.
 fn updates_dir() -> PathBuf {
     let exe = std::env::current_exe().unwrap_or_default();
     exe.parent().map(|p| p.join("updates")).unwrap_or_else(|| PathBuf::from("updates"))
@@ -72,7 +58,6 @@ pub fn status() -> String {
     )
 }
 
-/// Checks GitHub and, if a newer signed release exists, installs it.
 pub fn check_and_install() -> Result<String, String> {
     {
         let mut busy = BUSY.lock().map_err(|_| "busy")?;
@@ -103,8 +88,6 @@ pub fn check_and_install() -> Result<String, String> {
     result
 }
 
-/// Starts the verified installer. It stops this service, so remember whether
-/// the tray icon was open to bring it back afterwards.
 fn install(installer: &std::path::Path) -> Result<(), String> {
     let dir = updates_dir();
     if tray_running() {
@@ -119,7 +102,6 @@ fn install(installer: &std::path::Path) -> Result<(), String> {
         .map_err(|e| format!("could not start the installer: {e}"))
 }
 
-/// Background loop: first check shortly after start, then every six hours.
 pub fn start_background() {
     std::thread::spawn(|| {
         after_update();
@@ -134,15 +116,12 @@ pub fn start_background() {
     });
 }
 
-/// Runs once when the service starts: cleans up and, if an update just
-/// replaced the app while its tray icon was open, opens it again.
 fn after_update() {
     let dir = updates_dir();
     let marker = dir.join(RELAUNCH_MARKER);
     let relaunch = marker.exists();
     let _ = std::fs::remove_file(&marker);
     if relaunch {
-        // Give the installer a moment to finish before starting the app.
         std::thread::sleep(Duration::from_secs(5));
         if let Err(e) = launch_tray_for_console_user() {
             set_last(&format!("Updated, but could not reopen the tray icon: {e}."));
@@ -152,8 +131,6 @@ fn after_update() {
     }
 }
 
-/// Deletes downloaded installers. The one that just ran may still be locked
-/// right after an update, so this also runs before every later check.
 fn remove_old_installers() {
     if let Ok(entries) = std::fs::read_dir(updates_dir()) {
         for e in entries.flatten() {
@@ -164,7 +141,6 @@ fn remove_old_installers() {
     }
 }
 
-/// True if any other dns_switcher.exe (the app) is running.
 fn tray_running() -> bool {
     use windows_sys::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
     use windows_sys::Win32::System::Diagnostics::ToolHelp::{
@@ -194,7 +170,6 @@ fn tray_running() -> bool {
     }
 }
 
-/// Starts `dns_switcher.exe --tray` as the user signed in at the console.
 fn launch_tray_for_console_user() -> Result<(), String> {
     use windows_sys::Win32::Foundation::{CloseHandle, GetLastError, HANDLE};
     use windows_sys::Win32::System::Environment::{CreateEnvironmentBlock, DestroyEnvironmentBlock};

@@ -1,11 +1,3 @@
-//! Checks that every address in the resolver list still answers.
-//!
-//! Hits the network, so it's ignored by default:
-//!
-//!     cargo test --test live_resolvers -- --ignored --nocapture
-//!
-//! IPv6 addresses are skipped when this machine has no IPv6 route.
-
 use dns_switcher::probe;
 use dns_switcher::providers::{GROUPS, QUICK};
 use std::collections::BTreeSet;
